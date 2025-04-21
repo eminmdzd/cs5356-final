@@ -1,8 +1,9 @@
-import { db, UsersTable } from '@/lib/drizzle'
-import { timeAgo } from '@/lib/utils'
+import { db } from '@/database/db'
+import { UsersTable } from '@/database/schema'
+import { timeAgo } from '@/database/utils'
 import Image from 'next/image'
 import RefreshButton from './refresh-button'
-import { seed } from '@/lib/seed'
+import { seed } from '@/database/seed'
 
 export default async function Table() {
   let users
