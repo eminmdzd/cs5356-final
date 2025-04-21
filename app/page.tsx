@@ -1,91 +1,65 @@
-import Image from 'next/image'
-import Link from 'next/link'
-import { Suspense } from 'react'
-import Table from '@/components/table'
-import TablePlaceholder from '@/components/table-placeholder'
-import ExpandingArrow from '@/components/expanding-arrow'
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { headers } from "next/headers"
+import { auth } from "@/lib/auth"
 
-export const dynamic = 'force-dynamic'
+export default async function Home() {
+  const session = await auth.api.getSession({
+    headers: await headers()
+  });
 
-export default function Home() {
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center">
-      <Link
-        href="https://vercel.com/templates/next.js/postgres-drizzle"
-        className="group mt-20 sm:mt-0 rounded-full flex space-x-1 bg-white/30 shadow-sm ring-1 ring-gray-900/5 text-gray-600 text-sm font-medium px-10 py-2 hover:shadow-lg active:shadow-sm transition-all"
-      >
-        <p>Deploy your own to Vercel</p>
-        <ExpandingArrow />
-      </Link>
-      <h1 className="pt-4 pb-8 bg-gradient-to-br from-black via-[#171717] to-[#4b4b4b] bg-clip-text text-center text-4xl font-medium tracking-tight text-transparent md:text-7xl">
-        Postgres on Vercel
+    <main className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
+      <h1 className="text-5xl font-bold tracking-tight mb-6">
+        Convert PDFs to Audiobooks
       </h1>
-      <Suspense fallback={<TablePlaceholder />}>
-        <Table />
-      </Suspense>
-      <p className="font-light text-gray-600 w-full max-w-lg text-center mt-6">
-        Postgres demo with{' '}
-        <Link
-          href="https://github.com/drizzle-team/drizzle-orm"
-          className="font-medium underline underline-offset-4 hover:text-black transition-colors"
-        >
-          Drizzle
-        </Link>{' '}
-        as the ORM. <br /> Built with{' '}
-        <Link
-          href="https://nextjs.org/docs"
-          className="font-medium underline underline-offset-4 hover:text-black transition-colors"
-        >
-          Next.js App Router
-        </Link>
-        .
+      <p className="text-xl mb-8 max-w-2xl mx-auto text-muted-foreground">
+        Upload your PDF documents and convert them to audiobooks using advanced text-to-speech technology.
       </p>
-
-      <div className="flex justify-center space-x-5 pt-10 mt-10 border-t border-gray-300 w-full max-w-xl text-gray-600">
-        <Link
-          href="https://postgres-prisma.vercel.app/"
-          className="font-medium underline underline-offset-4 hover:text-black transition-colors"
-        >
-          Prisma
-        </Link>
-        <Link
-          href="https://postgres-starter.vercel.app/"
-          className="font-medium underline underline-offset-4 hover:text-black transition-colors"
-        >
-          Starter
-        </Link>
-        <Link
-          href="https://postgres-kysely.vercel.app/"
-          className="font-medium underline underline-offset-4 hover:text-black transition-colors"
-        >
-          Kysely
-        </Link>
+      <div className="flex gap-4">
+        {session ? (
+          <>
+            <Link href="/dashboard">
+              <Button size="lg">Go to Dashboard</Button>
+            </Link>
+            <Link href="/upload">
+              <Button size="lg" variant="outline">Upload PDF</Button>
+            </Link>
+          </>
+        ) : (
+          <>
+            <Link href="/auth/sign-in">
+              <Button size="lg">Sign In</Button>
+            </Link>
+            <Link href="/auth/sign-up">
+              <Button size="lg" variant="outline">Sign Up</Button>
+            </Link>
+          </>
+        )}
       </div>
-
-      <div className="sm:absolute sm:bottom-0 w-full px-20 py-10 flex justify-between">
-        <Link href="https://vercel.com">
-          <Image
-            src="/vercel.svg"
-            alt="Vercel Logo"
-            width={100}
-            height={24}
-            priority
-          />
-        </Link>
-        <Link
-          href="https://github.com/vercel/examples/tree/main/storage/postgres-drizzle"
-          className="flex items-center space-x-2"
-        >
-          <Image
-            src="/github.svg"
-            alt="GitHub Logo"
-            width={24}
-            height={24}
-            priority
-          />
-          <p className="font-light">Source</p>
-        </Link>
+      <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <FeatureCard 
+          title="Easy Upload" 
+          description="Simply upload your PDF files through our intuitive interface."
+        />
+        <FeatureCard 
+          title="High-Quality Audio" 
+          description="Experience natural-sounding voice with proper intonation and pronunciation."
+        />
+        <FeatureCard 
+          title="Listen Anywhere" 
+          description="Download your audiobooks or stream them directly from our platform."
+        />
       </div>
     </main>
+  )
+}
+
+function FeatureCard({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="p-6 border rounded-lg bg-card">
+      <h3 className="text-xl font-semibold mb-3">{title}</h3>
+      <p className="text-muted-foreground">{description}</p>
+    </div>
   )
 }
