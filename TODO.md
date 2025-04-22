@@ -1,0 +1,4 @@
+- Cloud storage
+- Extract PDF text on client since there are Next server action body size limits
+    - PDF file still stored in bucket storage along with processed audio file
+- Add hover state to buttons

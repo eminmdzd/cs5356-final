@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
 import { db } from "@/database/db"
 import { insertPdfSchema, pdfs, insertAudiobookSchema, audiobooks } from "@/database/schema"
+import { generateAudiobook } from "./audiobook"
 
 import { z } from "zod"
 import { writeFile } from "fs/promises"
@@ -35,7 +36,7 @@ export async function uploadPdf(formData: FormData) {
   try {
     // Get the file from the form
     const file = formData.get("file") as File
-    
+
     // Validate the PDF file
     const validation = validatePdfFile(file)
     if (!validation.success) {
@@ -69,6 +70,7 @@ export async function uploadPdf(formData: FormData) {
     // Insert the PDF record
     const [newPdf] = await db.insert(pdfs).values(parsedPdf.data).returning()
 
+    console.log("before insert")
     // Create a pending audiobook record
     const audiobookData = {
       title: file.name.replace(".pdf", ""),
@@ -83,9 +85,13 @@ export async function uploadPdf(formData: FormData) {
     }
 
     await db.insert(audiobooks).values(parsedAudiobook.data)
+    
+    console.log("after insert")
 
-    // In a real app, you would initiate the TTS conversion process here
-    // For example, send a message to a queue or trigger a background job
+    // Automatically trigger the audiobook generation process
+    const audiobookFormData = new FormData()
+    audiobookFormData.append("pdfId", newPdf.id)
+    await generateAudiobook(audiobookFormData)
 
     revalidatePath("/dashboard")
     revalidatePath("/audiobooks")

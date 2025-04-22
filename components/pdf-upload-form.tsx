@@ -23,21 +23,21 @@ export function PdfUploadForm() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    
+
     if (!file) {
       setError("Please select a file")
       return
     }
-    
+
     setIsUploading(true)
     setError(null)
-    
+
     try {
       const formData = new FormData()
       formData.append("file", file)
-      
+
       const result = await uploadPdf(formData)
-      
+
       if (result === "success") {
         toast.success("PDF uploaded successfully!")
         router.push("/dashboard")
@@ -61,7 +61,7 @@ export function PdfUploadForm() {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setFile(e.dataTransfer.files[0])
       setError(null)
@@ -119,9 +119,9 @@ export function PdfUploadForm() {
           className="hidden"
         />
       </div>
-      
+
       {error && <p className="text-red-500 text-sm">{error}</p>}
-      
+
       <div className="flex justify-end">
         <Button
           type="submit"

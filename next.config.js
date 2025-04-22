@@ -5,7 +5,11 @@ const nextConfig = {
   },
   experimental: {
     nodeMiddleware: true,
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
   },
+  serverExternalPackages: ["pdf-parse"]
 };
 
 export default nextConfig;

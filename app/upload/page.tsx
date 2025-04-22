@@ -22,11 +22,11 @@ export default async function UploadPage() {
       <p className="text-muted-foreground mb-6">
         Upload a PDF file to convert it to an audiobook. The file will be processed and converted to audio using text-to-speech technology.
       </p>
-      
+
       <div className="border rounded-lg p-6 bg-card">
         <PdfUploadForm />
       </div>
-      
+
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">File Requirements</h2>
         <ul className="list-disc pl-5 space-y-2 text-muted-foreground">

@@ -41,3 +41,4 @@ yarn-error.log*
 .vscode
 
 ./example-app/
+google-credentials.json
