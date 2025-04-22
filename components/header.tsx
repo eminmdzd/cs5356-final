@@ -36,7 +36,7 @@ export async function Header() {
                     )}
                 </div>
 
-                <UserButton />
+                <UserButton size="full" />
             </div>
         </header>
     )

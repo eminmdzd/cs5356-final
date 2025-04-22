@@ -17,13 +17,14 @@ export default async function UploadPage() {
   }
 
   return (
-    <div className="container max-w-3xl py-10">
+    <div className="container self-center max-w-3xl p-8">
       <h1 className="text-3xl font-bold mb-6">Upload PDF</h1>
       <p className="text-muted-foreground mb-6">
         Upload a PDF file to convert it to an audiobook. The file will be processed and converted to audio using text-to-speech technology.
       </p>
 
       <div className="border rounded-lg p-6 bg-card">
+      {/* <div className="border rounded-lg p-6 bg-card mx-auto max-w-xl"> */}
         <PdfUploadForm />
       </div>
 

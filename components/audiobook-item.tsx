@@ -17,13 +17,13 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
 
   const handleGenerate = async () => {
     setIsProcessing(true)
-    
+
     try {
       const formData = new FormData()
       formData.append("pdfId", audiobook.pdfId)
-      
+
       const result = await generateAction(formData)
-      
+
       if (result === "success") {
         toast.success("Audiobook generation started")
         setStatus("processing")
@@ -42,15 +42,15 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
     if (!confirm("Are you sure you want to delete this audiobook?")) {
       return
     }
-    
+
     setIsDeleting(true)
-    
+
     try {
       const formData = new FormData()
       formData.append("id", audiobook.id)
-      
+
       const result = await deleteAction(formData)
-      
+
       if (result === "success") {
         toast.success("Audiobook deleted successfully")
       } else {
@@ -88,10 +88,10 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
             )}
           </div>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-2 self-end md:self-center">
+
+        <div className="flex flex-col sm:flex-row gap-4 self-end md:self-center">
           {status === "completed" && audiobook.audioPath ? (
-            <audio 
+            <audio
               controls
               className="max-w-full w-[300px]"
               src={audiobook.audioPath}
@@ -113,9 +113,10 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
               {isProcessing ? "Processing..." : "Generate Audiobook"}
             </Button>
           ) : null}
-          
+
           <Button
             variant="destructive"
+            className="self-center"
             onClick={handleDelete}
             disabled={isProcessing || isDeleting}
           >

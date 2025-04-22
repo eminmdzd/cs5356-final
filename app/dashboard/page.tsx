@@ -33,28 +33,28 @@ export default async function DashboardPage() {
   };
 
   return (
-    <main className="container py-8 px-4">
+    <main className="container self-center p-8">
       <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <StatCard title="Total Audiobooks" value={stats.total} />
         <StatCard title="Completed" value={stats.completed} />
         <StatCard title="Processing" value={stats.processing} />
         <StatCard title="Failed" value={stats.failed} />
       </div>
-      
+
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-semibold">Recent Audiobooks</h2>
         <Link href="/audiobooks">
           <Button variant="outline">View All</Button>
         </Link>
       </div>
-      
+
       {audiobooks.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {audiobooks.map((book) => (
-            <div key={book.id} className="border rounded-lg overflow-hidden bg-card">
-              <div className="p-4">
+            <div key={book.id} className="border rounded-lg overflow-hidden bg-card flex flex-col">
+              <div className="p-4 flex-1">
                 <h3 className="text-xl font-medium truncate">{book.title}</h3>
                 <p className="text-muted-foreground text-sm mb-2">
                   {book.pdf.fileName}
@@ -65,13 +65,13 @@ export default async function DashboardPage() {
                     Duration: {formatDuration(book.duration)}
                   </p>
                 )}
-                <div className="mt-4">
-                  <Link href={`/audiobooks/${book.id}`}>
-                    <Button size="sm" variant="outline" className="w-full">
-                      View Details
-                    </Button>
-                  </Link>
-                </div>
+              </div>
+              <div className="p-4 pt-0">
+                <Link href={`/audiobooks/${book.id}`}>
+                  <Button size="sm" variant="outline" className="w-full">
+                    View Details
+                  </Button>
+                </Link>
               </div>
             </div>
           ))}

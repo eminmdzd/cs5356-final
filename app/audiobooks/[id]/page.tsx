@@ -48,7 +48,7 @@ export default async function AudiobookDetailsPage({
   };
 
   return (
-    <main className="container py-8 px-4">
+    <main className="container self-center p-8">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
           <Link href="/audiobooks">
@@ -97,7 +97,7 @@ export default async function AudiobookDetailsPage({
 
           {audiobook.processingStatus === "completed" && audiobook.audioPath && (
             <div>
-              <h2 className="text-xl font-semibold mb-4">Audio Player</h2>
+              <h2 className="text-xl font-semibold mb-4">Audio</h2>
               <audio
                 controls
                 className="w-full"

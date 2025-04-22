@@ -18,7 +18,21 @@ export function AuthView({
  
     return (
         <main className="flex flex-col grow p-4 items-center justify-center">
-            <AuthCard pathname={pathname} />
+            <AuthCard
+              pathname={pathname}
+              classNames={{
+                settings: {
+                  card: {
+                    base: "p-4 rounded-md",
+                    cell: "rounded-md justify-start",
+                    button: "ml-auto justify-self-end" 
+                  },
+                  tabs: {
+                    list: "gap-2",
+                  }
+                }
+              }}
+            />
         </main>
     )
 }

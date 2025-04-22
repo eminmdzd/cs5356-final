@@ -32,20 +32,20 @@ export default async function AudiobooksPage() {
   });
 
   return (
-    <main className="container py-8 px-4">
+    <main className="container self-center py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">My Audiobooks</h1>
         <Link href="/upload">
           <Button>Upload New PDF</Button>
         </Link>
       </div>
-      
+
       {audiobooks.length > 0 ? (
         <div className="space-y-4">
           {audiobooks.map((book) => (
-            <AudiobookItem 
-              key={book.id} 
-              audiobook={book} 
+            <AudiobookItem
+              key={book.id}
+              audiobook={book}
               deleteAction={deleteAudiobook}
               generateAction={generateAudiobook}
             />
