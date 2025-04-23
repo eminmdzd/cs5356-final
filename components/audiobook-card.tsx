@@ -124,7 +124,7 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
   return (
     <div className="border rounded-lg overflow-hidden bg-card flex flex-col relative">
       {!isEditing && (<div className="absolute top-2 right-2 flex gap-1">
-        {audiobook.processingStatus === "completed" && (
+        {audiobook.processingStatus !== "completed" && (
           <form 
             action={async () => {
               const formData = new FormData();
