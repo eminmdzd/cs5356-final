@@ -640,10 +640,10 @@ audiobookQueue.on('progress', (job, progress) => {
 
 console.log('Worker: Audiobook worker initialized and ready to process jobs.');
 
-// Perform initial queue check to pick up any jobs
-setTimeout(async () => {
+// Scan for any stale processing jobs in database and resume them
+async function recoverStaleJobs() {
   try {
-    console.log('Worker: Performing initial queue check');
+    console.log('Worker: Checking for stale processing jobs');
 
     // Get queue information
     const [activeJobs, waitingJobs, delayedJobs] = await Promise.all([
@@ -652,7 +652,7 @@ setTimeout(async () => {
       audiobookQueue.getDelayed()
     ]);
 
-    console.log(`Worker: Initial queue check - Found ${activeJobs.length} active, ${waitingJobs.length} waiting, and ${delayedJobs.length} delayed jobs`);
+    console.log(`Worker: Found ${activeJobs.length} active, ${waitingJobs.length} waiting, and ${delayedJobs.length} delayed jobs`);
 
     // Check if there are any jobs in processing state
     const processingAudiobooks = await db.query.audiobooks.findMany({
@@ -696,13 +696,13 @@ setTimeout(async () => {
         }
       }
     }
-
-    // If there are waiting jobs and no active jobs, force job processing
-    if (waitingJobs.length > 0 && activeJobs.length === 0) {
-      console.log(`Worker: Initial queue check - Processing pending job ${waitingJobs[0].id}`);
-      // No need to do anything, the queue processor will automatically pick it up
-    }
   } catch (error) {
-    console.error('Worker: Error during initial queue check:', error);
+    console.error('Worker: Error during stale job recovery:', error);
   }
-}, 3000); // Wait 3 seconds after initialization to check
+}
+
+// Run initial recovery
+setTimeout(recoverStaleJobs, 3000); // Wait 3 seconds after initialization to check
+
+// Schedule periodic recovery every 5 minutes
+setInterval(recoverStaleJobs, 5 * 60 * 1000);

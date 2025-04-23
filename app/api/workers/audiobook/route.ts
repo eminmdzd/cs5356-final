@@ -1,35 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { audiobookQueue, AudiobookJobData } from '@/lib/queue';
 
-// This is a serverless function that will be triggered by Vercel cron
-// It processes audiobook jobs from the queue
+// This endpoint can be used to manually trigger job processing
+// instead of relying on cron
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes
 
-// POST handler to process jobs
+// POST handler to manually process jobs if needed
 export async function POST(request: NextRequest) {
   try {
     // Check if we have Upstash Redis
     const hasUpstashRedis = process.env.REDIS_URL && process.env.REDIS_URL.includes('upstash');
     console.log(`Worker API: Using ${hasUpstashRedis ? 'Upstash Redis' : 'local Redis'}`);
     
-    // Process a single job from the queue
-    const job = await audiobookQueue.getNextJob();
-    
-    if (!job) {
-      return NextResponse.json({ status: 'no-jobs' });
-    }
-    
-    // Process the job
-    console.log(`API Worker: Processing job ${job.id}`);
-    
-    // Import the worker module dynamically to avoid circular dependencies
+    // Import the worker module dynamically to ensure it's initialized
+    // This will only be needed if the worker isn't already running
     const worker = await import('@/workers/audiobook-worker');
     
-    // Return response immediately, processing continues in background
-    return NextResponse.json({ status: 'processing', jobId: job.id });
+    // We don't need to explicitly get the next job anymore since
+    // the worker processes jobs automatically
+    
+    // Return response immediately
+    return NextResponse.json({ status: 'success', message: 'Worker initialized' });
   } catch (error) {
-    console.error('API Worker: Error processing job:', error);
+    console.error('API Worker: Error initializing worker:', error);
     return NextResponse.json(
       { 
         status: 'error', 

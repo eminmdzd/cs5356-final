@@ -51,13 +51,23 @@ export const audiobookQueue = new Queue('audiobook-processing', {
     max: 6,
     duration: 60000,
   },
+  defaultJobOptions: {
+    // Default job options
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 10000, // 10 seconds initial delay
+    },
+    removeOnComplete: true, // Clean up completed jobs
+    removeOnFail: false, // Keep failed jobs for debugging
+  }
 });
 
 // Auto-initialize worker in the same process
 // This is important for Next.js development mode where we don't have separate worker processes
-// In production, workers should be separate serverless functions
-if (typeof window === 'undefined' && !isProduction) { 
-  console.log('Queue: Auto-initializing worker process in development mode');
+// In production, we'll use Bull's built-in scheduled job processing
+if (typeof window === 'undefined') { 
+  console.log('Queue: Auto-initializing worker process');
 
   // Import worker dynamically to prevent circular dependencies
   import('../workers/audiobook-worker')
@@ -78,15 +88,7 @@ export interface AudiobookJobData {
 
 // Method to add job to the queue
 export function addAudiobookJob(data: AudiobookJobData): Promise<any> {
-  return audiobookQueue.add(data, {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 10000, // 10 seconds initial delay
-    },
-    removeOnComplete: true, // Clean up completed jobs
-    removeOnFail: false, // Keep failed jobs for debugging
-  });
+  return audiobookQueue.add(data);
 }
 
 // Method to cancel a specific audiobook job
