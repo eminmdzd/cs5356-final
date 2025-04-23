@@ -28,9 +28,28 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Initialize Google Cloud clients
 let ttsClient: TextToSpeechClient;
 try {
-  ttsClient = new TextToSpeechClient({
-    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
-  });
+  // In production, we should have credentials in .google-credentials.json
+  const isProduction = process.env.NODE_ENV === 'production';
+  const credentialsPath = './.google-credentials.json';
+  
+  console.log(`Initializing Google TTS client in ${isProduction ? 'production' : 'development'} mode`);
+  
+  if (isProduction) {
+    // In production, we use the credentials file that was generated during build
+    console.log(`Using credentials file at ${credentialsPath}`);
+    ttsClient = new TextToSpeechClient({
+      keyFilename: credentialsPath
+    });
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    // In development, we use the credentials file path from env var
+    console.log(`Using credentials file from GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
+    ttsClient = new TextToSpeechClient({
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+    });
+  } else {
+    throw new Error("No Google credentials found. In development, set GOOGLE_APPLICATION_CREDENTIALS environment variable.")
+  }
+  
   console.log("Google TTS client initialized successfully");
 } catch (error) {
   console.error("Failed to initialize Google TTS client:", error);

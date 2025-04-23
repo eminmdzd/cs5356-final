@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "next dev",
-        "build": "next build",
+        "build": "node ./scripts/generate-google-credentials.js && next build",
         "start": "next start",
         "db:start": "docker compose up -d",
         "db:stop": "docker compose down",

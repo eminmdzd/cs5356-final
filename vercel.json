@@ -1,11 +1,11 @@
 {
-  "buildCommand": "pnpm build",
+  "buildCommand": "NODE_ENV=production pnpm build",
   "installCommand": "pnpm install",
   "outputDirectory": ".next",
   "functions": {
     "app/api/workers/audiobook/route.ts": {
       "memory": 1024,
-      "maxDuration": 59
+      "maxDuration": 60
     }
   }
 }
