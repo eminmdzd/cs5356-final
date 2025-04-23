@@ -31,9 +31,10 @@ export function AuthView({
                     base: "p-4 rounded-md",
                     cell: "rounded-md justify-start",
                     button: "ml-auto justify-self-end",
+                    footer: "bg-card",
                   },
                   tabs: {
-                    list: "gap-2",
+                    list: "flex gap-2",
                   }
                 },
               }}
