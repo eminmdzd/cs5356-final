@@ -15,7 +15,7 @@ export function ClientHeader() {
           <Link href="/" className="flex items-center gap-2 font-bold text-lg">
             Audiobook Generator
           </Link>
-          {session && (
+          {session && !loading && (
             <nav className="flex items-center gap-2">
               <Link href="/dashboard">
                 <Button variant="ghost">Dashboard</Button>
@@ -35,7 +35,21 @@ export function ClientHeader() {
           )}
         </div>
 
-        <UserButton size="full" />
+        {/* Show different buttons based on auth state */}
+        {loading ? (
+          <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div>
+        ) : session ? (
+          <UserButton size="full" />
+        ) : (
+          <div className="flex items-center gap-2">
+            <Link href="/auth/sign-in">
+              <Button variant="outline">Sign In</Button>
+            </Link>
+            <Link href="/auth/sign-up">
+              <Button>Sign Up</Button>
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   )

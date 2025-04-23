@@ -1,20 +1,42 @@
 /* Override auth UI styles */
-.auth-password-container {
-  position: relative;
-}
 
-.auth-password-container input {
+/* General password field styling */
+input[type="password"] {
   padding-right: 2.5rem !important;
 }
 
-.auth-password-container button {
-  position: absolute !important;
-  right: 0 !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
+/* Target all password inputs across both sign-in and sign-up forms */
+[data-betterauth-form] input[type="password"],
+[data-betterauth-form] input[name="password"] {
+  padding-right: 2.5rem !important;
+  position: relative;
 }
 
-.auth-password-container svg {
+/* Add eye icon to all password fields */
+[data-betterauth-form] .password-field-wrapper {
   position: relative !important;
-  right: 0 !important;
+}
+
+/* Ensure eye icons are on the right side */
+[data-betterauth-form] button[aria-label="Toggle password visibility"] {
+  position: absolute !important;
+  right: 0.5rem !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 10 !important;
+}
+
+/* Style specific sign-in password field */
+[data-betterauth-form="sign-in"] input[type="password"],
+[data-betterauth-form="sign-in"] input[name="password"] {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1.2rem;
+}
+
+/* Hide default eye icon from browsers */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
 }

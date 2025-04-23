@@ -3,6 +3,7 @@
 import { AuthCard } from "@daveyplate/better-auth-ui"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
+import { PasswordEnhancer } from "./password-enhancer"
  
 export function AuthView({
     pathname
@@ -18,6 +19,9 @@ export function AuthView({
  
     return (
         <main className="flex flex-col grow p-4 items-center justify-center">
+            {/* Password enhancer injects the eye icon into password fields */}
+            <PasswordEnhancer />
+            
             <AuthCard
               pathname={pathname}
               classNames={{
