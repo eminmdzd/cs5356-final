@@ -6,6 +6,9 @@ import { audiobooks as audiobooksTable } from "@/database/schema"
 import { and, eq } from "drizzle-orm"
 import { Button } from "@/components/ui/button"
 import { notFound } from "next/navigation"
+import { AudiobookProgress } from "@/components/audiobook-progress"
+import { PdfViewer } from "@/components/pdf-viewer"
+import { toast } from "sonner"
 
 export const metadata = {
   title: "Audiobook Details - Audiobook Generator",
@@ -17,6 +20,9 @@ export default async function AudiobookDetailsPage({
 }: {
   params: { id: string }
 }) {
+  // Need to await params before using it
+  const { id } = await params;
+  
   const session = await auth.api.getSession({
     headers: await headers()
   });
@@ -28,7 +34,7 @@ export default async function AudiobookDetailsPage({
   // Get the audiobook
   const audiobook = await db.query.audiobooks.findFirst({
     where: and(
-      eq(audiobooksTable.id, params.id),
+      eq(audiobooksTable.id, id),
       eq(audiobooksTable.userId, session.user.id)
     ),
     with: {
@@ -92,11 +98,33 @@ export default async function AudiobookDetailsPage({
                 <span className="font-medium">Created:</span>{" "}
                 {new Date(audiobook.createdAt).toLocaleDateString()}
               </p>
+              
+              {(audiobook.processingStatus === "processing" || audiobook.processingStatus === "pending") && (
+                <div className="mt-6">
+                  <h3 className="font-medium mb-2">Progress</h3>
+                  <div className="audiobook-progress-container" data-audiobook-id={audiobook.id}>
+                    <AudiobookProgress 
+                      audiobookId={audiobook.id} 
+                      showCancelButton={true}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* View PDF Section */}
+          <div>
+            <h2 className="text-xl font-semibold mb-4">PDF Document</h2>
+            <PdfViewer 
+              pdfUrl={audiobook.pdf.filePath}
+              fileName={audiobook.pdf.fileName}
+            />
+          </div>
+
+          {/* Audio Player Section */}
           {audiobook.processingStatus === "completed" && audiobook.audioPath && (
-            <div>
+            <div className="mt-6">
               <h2 className="text-xl font-semibold mb-4">Audio</h2>
               <audio
                 controls
@@ -107,8 +135,37 @@ export default async function AudiobookDetailsPage({
               </audio>
             </div>
           )}
+          
+          {/* Error Details Section */}
+          {audiobook.processingStatus === "failed" && audiobook.errorDetails && (
+            <div className="mt-6">
+              <h2 className="text-xl font-semibold mb-2 text-red-500">Error Details</h2>
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300">
+                {audiobook.errorDetails}
+              </div>
+              <div className="mt-4">
+                <form action={async (formData: FormData) => {
+                  'use server';
+                  // Import the server action
+                  const { generateAudiobook } = await import('@/actions/audiobook');
+                  
+                  // Add the audiobook ID to the form data
+                  formData.append('audiobookId', id);
+                  formData.append('pdfId', audiobook.pdfId);
+                  
+                  // Call the server action
+                  const result = await generateAudiobook(formData);
+                  return result;
+                }}>
+                  <Button type="submit" variant="outline">
+                    Retry Processing
+                  </Button>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
   );
-} 
+}

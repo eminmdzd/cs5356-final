@@ -5,6 +5,8 @@ import { db } from "@/database/db"
 import { audiobooks as audiobooksTable } from "@/database/schema"
 import { desc, eq } from "drizzle-orm"
 import { Button } from "@/components/ui/button"
+import { AudiobookProgress } from "@/components/audiobook-progress"
+import { toast } from "sonner"
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
@@ -64,6 +66,14 @@ export default async function DashboardPage() {
                   <p className="text-sm mt-2">
                     Duration: {formatDuration(book.duration)}
                   </p>
+                )}
+                {(book.processingStatus === "processing" || book.processingStatus === "pending") && (
+                  <div className="mt-3">
+                    <AudiobookProgress 
+                      audiobookId={book.id} 
+                      showCancelButton={true}
+                    />
+                  </div>
                 )}
               </div>
               <div className="p-4 pt-0">

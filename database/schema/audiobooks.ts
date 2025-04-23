@@ -11,6 +11,7 @@ export const pdfs = pgTable("pdfs", {
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size").notNull(), // Size in bytes
   filePath: text("file_path").notNull(),
+  originalPath: text("original_path"), // Store the original path of the file (if uploaded from elsewhere)
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
   userId: text("user_id")
     .notNull()
@@ -24,6 +25,7 @@ export const audiobooks = pgTable("audiobooks", {
   description: text("description"),
   duration: integer("duration"), // Duration in seconds
   audioPath: text("audio_path"),
+  errorDetails: text("error_details"), // Store error details if processing fails
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   processingStatus: text("processing_status").notNull().default("pending"), // pending, processing, completed, failed

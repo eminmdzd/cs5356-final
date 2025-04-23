@@ -6,39 +6,73 @@ import { auth } from "@/lib/auth"
 import { db } from "@/database/db"
 import { audiobooks, pdfs } from "@/database/schema"
 import { and, eq } from "drizzle-orm"
-import { TextToSpeechClient, TextToSpeechLongAudioSynthesizeClient } from "@google-cloud/text-to-speech"
+import { TextToSpeechClient } from "@google-cloud/text-to-speech"
 import { Storage } from "@google-cloud/storage"
 import * as fs from "fs/promises"
 import * as path from "path"
 import pdfParse from "pdf-parse"
+import { setJobProgress } from "@/lib/queue"
 
 // Initialize Google Cloud clients
-const ttsClient = new TextToSpeechClient({
-  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
-});
-const storageClient = new Storage();
+let ttsClient: TextToSpeechClient;
+try {
+  ttsClient = new TextToSpeechClient({
+    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+  });
+  console.log("Google TTS client initialized successfully");
+} catch (error) {
+  console.error("Failed to initialize Google TTS client:", error);
+  // We'll handle this error when the function is called
+}
 
-async function extractTextFromPDF(filePath: string): Promise<string> {
+export async function extractTextFromPDF(filePath: string, originalPath?: string | null): Promise<string> {
   try {
-    // Remove the leading slash if it exists
-    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-    const absolutePath = path.join(process.cwd(), "public", cleanPath);
-
-    console.error("Attempting to read PDF at:", absolutePath);
-
-    // Check if file exists
-    try {
-      await fs.access(absolutePath);
-    } catch (error: any) {
-      console.error("File does not exist at path:", absolutePath);
-      throw new Error(`PDF file not found at ${absolutePath}`);
+    let dataBuffer: Buffer;
+    
+    // First try the original path if provided (for files uploaded from client's device)
+    if (originalPath) {
+      try {
+        dataBuffer = await fs.readFile(originalPath);
+        console.log("Successfully read PDF from original path:", originalPath);
+      } catch (originalPathError) {
+        console.log("Failed to read from original path, falling back to app path:", originalPathError);
+        
+        // Fall back to the app's public directory
+        const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+        const absolutePath = path.join(process.cwd(), "public", cleanPath);
+        
+        console.log("Attempting to read PDF at:", absolutePath);
+        
+        try {
+          await fs.access(absolutePath);
+        } catch (error: any) {
+          console.error("File does not exist at path:", absolutePath);
+          throw new Error(`PDF file not found at ${absolutePath}`);
+        }
+        
+        dataBuffer = await fs.readFile(absolutePath);
+      }
+    } else {
+      // No original path, use the app's public directory
+      const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+      const absolutePath = path.join(process.cwd(), "public", cleanPath);
+      
+      console.log("Attempting to read PDF at:", absolutePath);
+      
+      try {
+        await fs.access(absolutePath);
+      } catch (error: any) {
+        console.error("File does not exist at path:", absolutePath);
+        throw new Error(`PDF file not found at ${absolutePath}`);
+      }
+      
+      dataBuffer = await fs.readFile(absolutePath);
     }
 
-    const dataBuffer = await fs.readFile(absolutePath);
-    console.error("Successfully read PDF file, size:", dataBuffer.length);
+    console.log("Successfully read PDF file, size:", dataBuffer.length);
 
     const data = await pdfParse(dataBuffer);
-    console.error("Successfully parsed PDF, text length:", data.text.length);
+    console.log("Successfully parsed PDF, text length:", data.text.length);
 
     return data.text;
   } catch (error: any) {
@@ -47,11 +81,24 @@ async function extractTextFromPDF(filePath: string): Promise<string> {
   }
 }
 
-async function generateAudioWithGoogleTTS(text: string, outputFileName: string, userId: string): Promise<string> {
+export async function generateAudioWithGoogleTTS(
+  text: string, 
+  outputFileName: string, 
+  userId: string,
+  audiobookId: string
+): Promise<string> {
   try {
+    if (!ttsClient) {
+      throw new Error("Google TTS client not initialized");
+    }
+
     // Split text into chunks of approximately 5000 bytes
     const chunks = splitTextIntoChunks(text, 5000);
-    console.error(`Split text into ${chunks.length} chunks`);
+    console.log(`Split text into ${chunks.length} chunks`);
+    
+    // Update progress to 20%
+    setJobProgress(audiobookId, 20);
+    console.log(`Updated progress for ${audiobookId} to 20%`);
 
     // Create the output directory if it doesn't exist
     const outputDir = path.join(process.cwd(), "public/audio");
@@ -60,7 +107,10 @@ async function generateAudioWithGoogleTTS(text: string, outputFileName: string, 
     // Generate audio for each chunk
     const audioChunks: Buffer[] = [];
     for (let i = 0; i < chunks.length; i++) {
-      console.error(`Processing chunk ${i + 1}/${chunks.length}`);
+      // Calculate and update progress - scale from 20% to 90% based on chunk processing
+      const progress = Math.floor(20 + (i / chunks.length * 70));
+      setJobProgress(audiobookId, progress);
+      console.log(`Processing chunk ${i + 1}/${chunks.length}, progress: ${progress}%`);
 
       // Prepare the synthesis input
       const synthesisInput = {
@@ -81,31 +131,43 @@ async function generateAudioWithGoogleTTS(text: string, outputFileName: string, 
         speakingRate: 1.0,
       };
 
-      // Make the request to generate audio
-      const [response] = await ttsClient.synthesizeSpeech({
-        input: synthesisInput,
-        voice,
-        audioConfig,
-      });
-
-      if (!response.audioContent) {
-        throw new Error(`No audio content received for chunk ${i + 1}`);
+      try {
+        // Make the request to generate audio
+        const [response] = await ttsClient.synthesizeSpeech({
+          input: synthesisInput,
+          voice,
+          audioConfig,
+        });
+  
+        if (!response.audioContent) {
+          throw new Error(`No audio content received for chunk ${i + 1}`);
+        }
+  
+        // Convert the audio content to Buffer
+        const audioBuffer = typeof response.audioContent === 'string'
+          ? Buffer.from(response.audioContent, 'base64')
+          : Buffer.from(response.audioContent);
+  
+        audioChunks.push(audioBuffer);
+        console.log(`Successfully generated audio for chunk ${i + 1}/${chunks.length}`);
+      } catch (ttsError) {
+        console.error(`Error generating audio for chunk ${i + 1}:`, ttsError);
+        throw ttsError;
       }
-
-      // Convert the audio content to Buffer
-      const audioBuffer = typeof response.audioContent === 'string'
-        ? Buffer.from(response.audioContent, 'base64')
-        : Buffer.from(response.audioContent);
-
-      audioChunks.push(audioBuffer);
     }
 
     // Concatenate all audio chunks
     const concatenatedAudio = Buffer.concat(audioChunks);
+    console.log(`Combined ${audioChunks.length} audio chunks into a single file`);
 
     // Save the final audio file
     const audioPath = path.join(outputDir, `${outputFileName}.mp3`);
     await fs.writeFile(audioPath, concatenatedAudio);
+    console.log(`Saved audio file to ${audioPath}`);
+
+    // Update progress to 90%
+    setJobProgress(audiobookId, 90);
+    console.log(`Updated progress for ${audiobookId} to 90%`);
 
     // Return the public path to the audio file
     return `/audio/${outputFileName}.mp3`;
@@ -187,6 +249,7 @@ export async function generateAudiobook(formData: FormData) {
 
   try {
     const pdfId = formData.get("pdfId") as string;
+    const audiobookId = formData.get("audiobookId") as string; // For retry functionality
 
     if (!pdfId) {
       return "PDF ID is required";
@@ -204,76 +267,73 @@ export async function generateAudiobook(formData: FormData) {
       return "PDF not found or you don't have permission to access it";
     }
 
-    // Update the audiobook status to processing
+    let targetAudiobookId = audiobookId;
+
+    // If no audiobook ID was provided (new generation)
+    if (!targetAudiobookId) {
+      // Get the existing audiobook record
+      const existingAudiobook = await db.query.audiobooks.findFirst({
+        where: and(
+          eq(audiobooks.pdfId, pdfId),
+          eq(audiobooks.userId, session.user.id)
+        )
+      });
+
+      targetAudiobookId = existingAudiobook?.id;
+    }
+
+    console.log(`Starting audiobook generation for ID ${targetAudiobookId}`);
+
+    // Clear any previous error details and update status to processing
     await db
       .update(audiobooks)
-      .set({ processingStatus: "processing" })
+      .set({ 
+        processingStatus: "processing",
+        errorDetails: null,
+      })
       .where(
         and(
-          eq(audiobooks.pdfId, pdfId),
+          eq(audiobooks.id, targetAudiobookId),
           eq(audiobooks.userId, session.user.id)
         )
       );
 
-    console.log("here")
-
+    // Revalidate paths to show updated status immediately
     revalidatePath("/audiobooks");
+    revalidatePath("/dashboard");
+    revalidatePath(`/audiobooks/${targetAudiobookId}`);
 
-    // Start the audiobook generation process
-    // This would typically be handled by a background job in production
+    // Set initial progress to 5% - job added to queue
+    setJobProgress(targetAudiobookId, 5);
+    
+    // Make sure worker is running by accessing the API endpoint
     try {
-      // Extract text from PDF
-      console.log(pdf)
-      console.log(pdf.filePath)
-      const text = await extractTextFromPDF(pdf.filePath);
-      console.log(`extracted text ${text}`)
-      // Generate a unique filename for the audiobook
-      const outputFileName = `audiobook-${pdfId}`;
-
-      // Generate the audiobook using Google TTS
-      const audioPath = await generateAudioWithGoogleTTS(text, outputFileName, session.user.id);
-
-      // Get approximate duration - estimate 150 words per minute
-      const wordCount = text.split(/\s+/).length;
-      const estimatedDuration = Math.ceil(wordCount / 150 * 60); // Duration in seconds
-
-      // Update the audiobook as completed
-      await db
-        .update(audiobooks)
-        .set({
-          processingStatus: "completed",
-          audioPath: audioPath,
-          duration: estimatedDuration
-        })
-        .where(
-          and(
-            eq(audiobooks.pdfId, pdfId),
-            eq(audiobooks.userId, session.user.id)
-          )
-        );
-
-      revalidatePath("/audiobooks");
-      return "success";
+      // Use absolute URL with the current domain
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+      const host = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_APP_URL || 'localhost:3000';
+      const workerUrl = `${protocol}://${host}/api/worker`;
+      
+      console.log(`Checking worker at URL: ${workerUrl}`);
+      await fetch(workerUrl);
     } catch (error) {
-      console.error("Error generating audiobook:", error);
-
-      // Update the audiobook status to failed
-      await db
-        .update(audiobooks)
-        .set({ processingStatus: "failed" })
-        .where(
-          and(
-            eq(audiobooks.pdfId, pdfId),
-            eq(audiobooks.userId, session.user.id)
-          )
-        );
-
-      revalidatePath("/audiobooks");
-      throw error;
+      console.log('Worker check error (ignoring):', error);
     }
+
+    // Add job to queue for processing by the worker
+    console.log('Adding job to queue for audiobook:', targetAudiobookId);
+    const { addAudiobookJob } = await import('@/lib/queue');
+    const job = await addAudiobookJob({
+      pdfId,
+      userId: session.user.id,
+      audiobookId: targetAudiobookId
+    });
+    
+    console.log(`Added job ${job.id} to queue for audiobook ${targetAudiobookId}`);
+
+    return "success";
   } catch (error: any) {
-    console.error("Error generating audiobook:", error);
-    return error.message || "Failed to generate audiobook";
+    console.error("Error initiating audiobook generation:", error);
+    return error.message || "Failed to start audiobook generation";
   }
 }
 

@@ -35,6 +35,12 @@ export function PdfUploadForm() {
     try {
       const formData = new FormData()
       formData.append("file", file)
+      
+      // Store the original file path if available (browsers may not provide this for security reasons)
+      if ('path' in file) {
+        // @ts-ignore - some File objects from certain environments may have a path property
+        formData.append("originalPath", file.path)
+      }
 
       const result = await uploadPdf(formData)
 

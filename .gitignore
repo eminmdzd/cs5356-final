@@ -42,3 +42,6 @@ yarn-error.log*
 
 ./example-app/
 google-credentials.json
+
+public/audio/
+public/uploads/
