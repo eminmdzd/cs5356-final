@@ -5,7 +5,7 @@
   "functions": {
     "app/api/workers/audiobook/route.ts": {
       "memory": 1024,
-      "maxDuration": 59
+      "maxDuration": 55
     }
   }
 }

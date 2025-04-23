@@ -4,7 +4,7 @@ import { audiobookQueue, AudiobookJobData } from '@/lib/queue';
 // This endpoint can be used to manually trigger job processing
 // instead of relying on cron
 export const runtime = 'nodejs';
-export const maxDuration = 300; // 5 minutes
+export const maxDuration = 55; // Vercel hobby plan has a limit of 60 seconds
 
 // POST handler to manually process jobs if needed
 export async function POST(request: NextRequest) {
