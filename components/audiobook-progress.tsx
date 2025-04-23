@@ -11,8 +11,8 @@ interface AudiobookProgressProps {
   showCancelButton?: boolean;
 }
 
-export function AudiobookProgress({ 
-  audiobookId, 
+export function AudiobookProgress({
+  audiobookId,
   showCompleteMessage = true,
   showCancelButton = false
 }: AudiobookProgressProps) {
@@ -30,21 +30,21 @@ export function AudiobookProgress({
 
     const connectToEventSource = () => {
       source = new SSE(`/api/audiobook-progress/${audiobookId}`);
-      
-      source.addEventListener('message', (event) => {
+
+      source.addEventListener('message', (event: any) => {
         if (!isMounted) return;
-        
+
         try {
           const data = JSON.parse(event.data);
           const newProgress = data.progress || 0;
-          
+
           // Only update progress if it's going up or if status changes
           // This helps prevent progress from jumping backward
           if (newProgress >= lastProgress || data.status !== status) {
             lastProgress = newProgress;
             setProgress(newProgress);
             setStatus(data.status || "");
-            
+
             // If processing is complete and the toast notification is enabled
             if (data.status === "completed" && showCompleteMessage) {
               toast.success("Audiobook generation complete!", {
@@ -54,7 +54,7 @@ export function AudiobookProgress({
                 },
               });
             }
-            
+
             // If processing failed
             if (data.status === "failed") {
               toast.error("Audiobook generation failed");
@@ -66,11 +66,11 @@ export function AudiobookProgress({
           console.error("Error parsing SSE data:", error);
         }
       });
-      
-      source.addEventListener('error', (error) => {
+
+      source.addEventListener('error', (error: any) => {
         console.error("SSE connection error:", error);
         source.close();
-        
+
         // Try to reconnect after a delay
         setTimeout(() => {
           if (isMounted) {
@@ -78,12 +78,12 @@ export function AudiobookProgress({
           }
         }, 5000);
       });
-      
+
       source.stream();
     };
-    
+
     connectToEventSource();
-    
+
     return () => {
       isMounted = false;
       if (source) {
@@ -91,19 +91,19 @@ export function AudiobookProgress({
       }
     };
   }, [audiobookId, router, showCompleteMessage, status]);
-  
+
   // Function to handle cancellation
   const handleCancel = useCallback(async () => {
     try {
       setIsCancelling(true);
-      
+
       const formData = new FormData();
       formData.append('audiobookId', audiobookId);
-      
+
       // Use dynamic import to get the server action
       const { cancelAudiobookGeneration } = await import('@/actions/cancel-audiobook');
       const result = await cancelAudiobookGeneration(formData);
-      
+
       if (result === 'success') {
         toast.success('Processing cancelled');
         // Force a refresh to update UI
@@ -118,9 +118,9 @@ export function AudiobookProgress({
       setIsCancelling(false);
     }
   }, [audiobookId, router]);
-  
+
   if (!audiobookId) return null;
-  
+
   // Determine label text based on status and progress
   let statusLabel = "";
   switch (status) {
@@ -164,7 +164,7 @@ export function AudiobookProgress({
         </div>
       </div>
       <div className="relative w-full h-2 bg-muted rounded-full overflow-hidden">
-        <div 
+        <div
           className={`absolute top-0 left-0 h-full rounded-full transition-all duration-300 ${status === "failed" ? "bg-red-500" : "bg-primary"}`}
           style={{ width: `${progress}%` }}
         />

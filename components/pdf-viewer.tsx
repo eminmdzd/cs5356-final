@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Maximize2, Minimize2 } from "lucide-react";
 
 interface PdfViewerProps {
   pdfUrl: string;
@@ -23,25 +24,25 @@ export function PdfViewer({ pdfUrl, fileName }: PdfViewerProps) {
       <div className="p-3 border-b flex justify-between items-center">
         <h3 className="font-medium">{fileName}</h3>
         <div className="flex gap-2">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={toggleExpand}
-          >
-            {isExpanded ? "Minimize" : "Expand"}
-          </Button>
-          <Button 
-            size="sm" 
-            variant="outline" 
+          <Button
+            size="sm"
+            variant="outline"
             asChild
           >
             <a href={fullPdfUrl} target="_blank" rel="noopener noreferrer">
               Open in New Tab
             </a>
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={toggleExpand}
+          >
+            {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
-      
+
       <div className={`relative ${isExpanded ? 'h-[800px]' : 'h-[400px]'} transition-all duration-300`}>
         <iframe
           src={`${fullPdfUrl}#toolbar=0`}

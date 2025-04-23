@@ -47,9 +47,9 @@ export async function cancelAudiobookGeneration(formData: FormData) {
     // Update the database to mark the audiobook as failed with cancellation message
     await db
       .update(audiobooks)
-      .set({ 
-        processingStatus: "failed", 
-        errorDetails: "Processing was cancelled by the user" 
+      .set({
+        processingStatus: "failed",
+        errorDetails: "Processing was cancelled by the user"
       })
       .where(
         and(

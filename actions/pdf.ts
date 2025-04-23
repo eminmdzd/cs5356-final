@@ -10,7 +10,6 @@ import { z } from "zod"
 import { writeFile, mkdir } from "fs/promises"
 import { nanoid } from "nanoid"
 import path from "path"
-import { addAudiobookJob } from "@/lib/queue"
 
 // Validates the file is a PDF
 const validatePdfFile = (file: File) => {
@@ -92,7 +91,7 @@ export async function uploadPdf(formData: FormData) {
     }
 
     await db.insert(audiobooks).values(parsedAudiobook.data)
-    
+
     console.log("after insert")
 
     // Create job data for the audiobook processing queue
@@ -106,35 +105,19 @@ export async function uploadPdf(formData: FormData) {
       throw new Error("Failed to create audiobook record");
     }
 
-    // Import the progress tracking function
-    const { setJobProgress } = await import('@/lib/queue')
-    
-    // Set initial progress to 5% to indicate job is starting
-    setJobProgress(newAudiobook.id, 5)
-    console.log(`Set initial progress for audiobook ${newAudiobook.id} to 5%`)
-    
-    // Ensure worker is running by accessing the API endpoint
-    try {
-      // Use absolute URL with the current domain
-      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-      const host = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_APP_URL || 'localhost:3000';
-      const workerUrl = `${protocol}://${host}/api/worker`;
-      
-      console.log(`Checking worker at URL: ${workerUrl}`);
-      await fetch(workerUrl);
-      console.log('Worker endpoint accessed to ensure worker is running');
-    } catch (error) {
-      console.log('Worker check error (ignored):', error);
-    }
-    
-    // NOTE: We've moved job creation to the worker API endpoint
-    // This prevents duplicate jobs from being created
-    console.log(`Letting worker API create the job for audiobook ${newAudiobook.id}`)
+    const { generateAudiobook } = await import('@/actions/audiobook');
+
+    // Add the audiobook ID to the form data
+    formData.append('audiobookId', newAudiobook.id);
+    formData.append('pdfId', newPdf.id);
+
+    // Call the server action
+    const result = await generateAudiobook(formData);
 
     revalidatePath("/dashboard")
     revalidatePath("/audiobooks")
 
-    return "success"
+    return result
   } catch (error: any) {
     console.error("Error uploading PDF:", error)
     return error.message || "Failed to upload PDF"

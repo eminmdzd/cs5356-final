@@ -8,7 +8,6 @@ This application allows users to generate audiobooks from PDF files using Google
 - PDF upload and management
 - Audiobook generation from PDFs using Google Cloud TTS
 - Audiobook playback and management
-- Admin dashboard for system monitoring
 
 ## Tech Stack
 
@@ -18,7 +17,6 @@ This application allows users to generate audiobooks from PDF files using Google
 - **Text-to-Speech**: Google Cloud Text-to-Speech Long Audio API
 - **Storage**: Google Cloud Storage
 - **Validation**: Zod
-- **State Management**: React Query
 
 ## Getting Started
 
@@ -119,13 +117,12 @@ GOOGLE_CLOUD_STORAGE_BUCKET=your-google-cloud-storage-bucket
 2. **PDF Upload**: Users upload PDF files
 3. **Audiobook Generation**: The system converts the PDF to audio using Google TTS
 4. **Audiobook Management**: Users can view, play, and delete their audiobooks
-5. **Admin Dashboard**: Administrators can view system-wide statistics
 
 ## Limitations
 
 - PDF files must contain selectable text (not scanned images)
 - Maximum PDF size of 10MB
-- English text support only (though Google TTS supports many languages)
+- Only english text tested
 - Long PDFs may take significant time to process
 
 ## Future Enhancements
@@ -135,4 +132,3 @@ GOOGLE_CLOUD_STORAGE_BUCKET=your-google-cloud-storage-bucket
 - PDF text extraction improvements
 - Progress tracking for long audiobooks
 - Bookmarking functionality
-- Mobile app with offline playback

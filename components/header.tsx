@@ -27,11 +27,6 @@ export async function Header() {
                             <Link href="/audiobooks">
                                 <Button variant="ghost">My Audiobooks</Button>
                             </Link>
-                            {session.user.role === "admin" && (
-                                <Link href="/admin">
-                                    <Button variant="ghost">Admin</Button>
-                                </Link>
-                            )}
                         </nav>
                     )}
                 </div>

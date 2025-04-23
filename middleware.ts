@@ -11,14 +11,10 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL("/auth/sign-in", request.url));
     }
 
-    if (request.url.endsWith("/admin") && session.user.role !== "admin") {
-        return NextResponse.redirect(new URL("/", request.url));
-    }
-
     return NextResponse.next()
 }
 
 export const config = {
     runtime: "nodejs",
-    matcher: ["/dashboard", "/audiobooks", "/upload", "/admin"]
+    matcher: ["/dashboard", "/audiobooks", "/upload"]
 }

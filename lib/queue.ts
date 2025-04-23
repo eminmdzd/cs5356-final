@@ -6,11 +6,10 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
 // Create Redis client for Bull
 const client = new Redis(redisUrl);
-const subscriber = new Redis(redisUrl);
 
 // Create and export the audiobook processing queue
 export const audiobookQueue = new Queue('audiobook-processing', {
-  redis: { 
+  redis: {
     port: client.options.port || 6379,
     host: client.options.host || 'localhost',
     password: client.options.password,
@@ -26,7 +25,7 @@ export const audiobookQueue = new Queue('audiobook-processing', {
 // This is important for Next.js development mode where we don't have separate worker processes
 if (typeof window === 'undefined') { // Only run in server context
   console.log('Queue: Auto-initializing worker process');
-  
+
   // Import worker dynamically to prevent circular dependencies
   import('../workers/audiobook-worker')
     .then(() => {
@@ -66,28 +65,28 @@ export async function cancelAudiobookJob(audiobookId: string): Promise<boolean> 
       audiobookQueue.getWaiting(),
       audiobookQueue.getDelayed()
     ]);
-    
+
     // Combine all jobs to search through
     const allJobs = [...activeJobs, ...waitingJobs, ...delayedJobs];
-    
+
     // Find job for this audiobook
     const job = allJobs.find(job => {
       const data = job.data as AudiobookJobData;
       return data.audiobookId === audiobookId;
     });
-    
+
     if (job) {
       console.log(`Found job ${job.id} for audiobook ${audiobookId}, removing...`);
-      
+
       // Remove the job
       await job.remove();
-      
+
       // Reset progress tracking
       setJobProgress(audiobookId, 0);
-      
+
       return true;
     }
-    
+
     console.log(`No job found for audiobook ${audiobookId}`);
     return false;
   } catch (error) {
@@ -103,15 +102,15 @@ export async function cancelAudiobookJob(audiobookId: string): Promise<boolean> 
 // Method to set job progress using Redis
 export async function setJobProgress(audiobookId: string, progress: number): Promise<void> {
   console.log(`Setting progress for audiobook ${audiobookId} to ${progress}%`);
-  
+
   try {
     // Make sure progress is a number between 0 and 100
     const validProgress = Math.max(0, Math.min(100, progress));
-    
+
     // Get current progress from Redis
     const currentProgressStr = await client.get(`progress:${audiobookId}`);
     const currentProgress = currentProgressStr ? parseInt(currentProgressStr, 10) : 0;
-    
+
     // Only update if the new progress is higher than the current progress
     if (validProgress >= currentProgress) {
       await client.set(`progress:${audiobookId}`, validProgress.toString());
