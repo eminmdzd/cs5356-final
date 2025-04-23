@@ -9,19 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useState } from "react"
 import { toast } from "sonner"
-
-type AudiobookCardProps = {
-  audiobook: {
-    id: string
-    title: string
-    processingStatus: string
-    duration?: number
-    pdfId: string
-    pdf: {
-      fileName: string
-    }
-  }
-}
+import { Audiobook, Pdf } from "@/database/schema"
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -64,7 +52,7 @@ function formatDuration(seconds: number): string {
   }
 }
 
-export function AudiobookCard({ audiobook }: AudiobookCardProps) {
+export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf } }) {
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState(audiobook.title)
   const [isDeleting, setIsDeleting] = useState(false)

@@ -3,10 +3,10 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { UserButton } from "@daveyplate/better-auth-ui"
-import { useSession } from "@/lib/use-session"
+import { authClient } from "@/lib/auth-client"
 
 export function ClientHeader() {
-  const { session, loading } = useSession()
+  const { data: session, isPending } = authClient.useSession()
 
   return (
     <header className="sticky top-0 z-50 px-4 py-3 border-b bg-background/60 backdrop-blur">
@@ -15,7 +15,7 @@ export function ClientHeader() {
           <Link href="/" className="flex items-center gap-2 font-bold text-lg">
             Audiobook Generator
           </Link>
-          {session?.user && !loading && (
+          {session?.user && !isPending && (
             <nav className="flex items-center gap-2">
               <Link href="/dashboard">
                 <Button variant="ghost">Dashboard</Button>
@@ -36,7 +36,7 @@ export function ClientHeader() {
         </div>
 
         {/* Show different buttons based on auth state */}
-        {loading ? (
+        {isPending ? (
           <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div>
         ) : session?.user ? (
           <UserButton size="full" />
