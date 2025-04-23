@@ -130,8 +130,10 @@ function StatusBadge({ status }: { status: string }) {
   // @ts-ignore
   const label = labels[status] || "Unknown";
 
+  const isAnimated = status === "processing" || status === "pending";
+
   return (
-    <span className={`inline-block px-2 py-1 text-xs rounded-full ${colorClass}`}>
+    <span className={`inline-block px-2 py-1 text-xs rounded-full ${colorClass} ${isAnimated ? 'animate-pulse' : ''}`}>
       {label}
     </span>
   );
