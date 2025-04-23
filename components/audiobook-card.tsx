@@ -67,6 +67,8 @@ function formatDuration(seconds: number): string {
 export function AudiobookCard({ audiobook }: AudiobookCardProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState(audiobook.title)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const handleTitleSave = async () => {
     if (title === audiobook.title) {
@@ -98,6 +100,39 @@ export function AudiobookCard({ audiobook }: AudiobookCardProps) {
     }
   }
 
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true)
+  }
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false)
+  }
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("id", audiobook.id)
+
+      const result = await deleteAudiobook(formData)
+
+      if (result === "success") {
+        toast.success("Audiobook deleted successfully")
+        setShowDeleteModal(false)
+      } else {
+        toast.error(result)
+        setIsDeleting(false)
+        setShowDeleteModal(false)
+      }
+    } catch (error) {
+      console.error("Error deleting audiobook:", error)
+      toast.error("Failed to delete audiobook")
+      setIsDeleting(false)
+      setShowDeleteModal(false)
+    }
+  }
+
   return (
     <div className="border rounded-lg overflow-hidden bg-card flex flex-col relative">
       {!isEditing && (<div className="absolute top-2 right-2 flex gap-1">
@@ -120,22 +155,15 @@ export function AudiobookCard({ audiobook }: AudiobookCardProps) {
             </Button>
           </form>
         )}
-        <form 
-          action={async () => {
-            const formData = new FormData();
-            formData.append("id", audiobook.id);
-            await deleteAudiobook(formData);
-          }}
+        <Button 
+          size="icon" 
+          variant="ghost" 
+          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          onClick={handleDeleteClick}
+          disabled={isDeleting}
         >
-          <Button 
-            size="icon" 
-            variant="ghost" 
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-            type="submit"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </form>
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>)}
       <div className="p-4 flex-1">
         {isEditing ? (
@@ -207,6 +235,32 @@ export function AudiobookCard({ audiobook }: AudiobookCardProps) {
           </Button>
         </Link>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card p-6 rounded-lg max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Confirm Deletion</h3>
+            <p className="mb-6">Are you sure you want to delete "{audiobook.title}"? This action cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleCancelDelete}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

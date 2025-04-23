@@ -5,7 +5,7 @@ import { authClient } from './auth-client'
 
 // Define a common interface for session response type
 interface SessionResponse {
-  session: { 
+  session: {
     id: string;
     createdAt: Date;
     updatedAt: Date;
@@ -41,15 +41,15 @@ export function useSession() {
         const currentSession = await authClient.getSession()
         if (mounted) {
           // Make sure we're storing the data in the right format and handle possible Error objects
-          if (currentSession && 
+          if (currentSession &&
               typeof currentSession === 'object' &&
-              'session' in currentSession && 
+              'session' in currentSession &&
               'user' in currentSession) {
-            
+
             // Use type assertion
             const typedSession = currentSession as SessionResponse;
-            
-            setSession({ 
+
+            setSession({
               session: typedSession.session,
               user: typedSession.user
             })
@@ -70,18 +70,18 @@ export function useSession() {
     loadSession()
 
     // Subscribe to session changes
-    const unsubscribe = authClient.onSessionChange((newSession) => {
+    authClient.onSessionChange((newSession) => {
       if (mounted) {
         // Make sure we're storing the data in the right format and handle possible Error objects
-        if (newSession && 
+        if (newSession &&
             typeof newSession === 'object' &&
-            'session' in newSession && 
+            'session' in newSession &&
             'user' in newSession) {
-            
+
           // Use type assertion
           const typedSession = newSession as SessionResponse;
-            
-          setSession({ 
+
+          setSession({
             session: typedSession.session,
             user: typedSession.user
           })
@@ -94,7 +94,7 @@ export function useSession() {
 
     return () => {
       mounted = false
-      unsubscribe()
+      // No unsubscribe function needed
     }
   }, [])
 

@@ -6,10 +6,7 @@ import { db } from "@/database/db"
 import { audiobooks as audiobooksTable } from "@/database/schema"
 import { desc, eq } from "drizzle-orm"
 import { Button } from "@/components/ui/button"
-import { deleteAudiobook, generateAudiobook, updateAudiobookTitle } from "@/actions/audiobook"
-import { AudiobookItem } from "@/components/audiobook-item"
 import AudiobooksLoading from "./loading"
-import { AudiobookProgress } from "@/components/audiobook-progress"
 import { AudiobookCard } from "@/components/audiobook-card"
 
 export const metadata = {

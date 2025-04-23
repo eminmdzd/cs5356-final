@@ -19,3 +19,5 @@
 
 - Long PDFs error out with: Error generating audio with Google TTS for audiobook
 - Sign in while signed in redirect to dashboard
+- Finalizing... on regenerate
+- Delete modal on audiobooks
