@@ -8,16 +8,16 @@ export function PasswordEnhancer() {
     const enhancePasswordFields = () => {
       // Get all password inputs in sign-in form
       const passwordInputs = document.querySelectorAll('input[type="password"], input[name="password"]')
-      
+
       passwordInputs.forEach(input => {
         if (!(input instanceof HTMLInputElement)) return
-        
+
         // Skip if already enhanced
         if (input.dataset.enhanced === "true") return
-        
+
         // Mark as enhanced
         input.dataset.enhanced = "true"
-        
+
         // Create wrapper if needed
         let wrapper = input.parentElement
         if (!wrapper.classList.contains('password-wrapper')) {
@@ -26,7 +26,7 @@ export function PasswordEnhancer() {
           input.parentNode.insertBefore(wrapper, input)
           wrapper.appendChild(input)
         }
-        
+
         // Add toggle button if it doesn't exist
         if (!wrapper.querySelector('.password-toggle')) {
           const toggleBtn = document.createElement('button')
@@ -41,9 +41,9 @@ export function PasswordEnhancer() {
           toggleBtn.addEventListener('click', () => {
             const type = input.type === 'password' ? 'text' : 'password'
             input.type = type
-            
+
             // Change the icon
-            toggleBtn.innerHTML = type === 'password' 
+            toggleBtn.innerHTML = type === 'password'
               ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
                    <circle cx="12" cy="12" r="3"></circle>
@@ -62,23 +62,23 @@ export function PasswordEnhancer() {
 
     // Run enhancement on load
     enhancePasswordFields()
-    
+
     // Set up a mutation observer to catch dynamically added password fields
     const observer = new MutationObserver((mutations) => {
       enhancePasswordFields()
     })
-    
+
     // Start observing
-    observer.observe(document.body, { 
-      childList: true, 
-      subtree: true 
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
     })
-    
+
     // Clean up
     return () => {
       observer.disconnect()
     }
   }, [])
-  
+
   return null
 }

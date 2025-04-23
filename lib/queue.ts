@@ -16,7 +16,7 @@ export const audiobookQueue = new Queue('audiobook-processing', {
   },
   limiter: {
     // Limit to 5 jobs per minute to avoid rate limiting in Google TTS API
-    max: 5,
+    max: 6,
     duration: 60000,
   },
 });

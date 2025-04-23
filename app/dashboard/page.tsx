@@ -17,21 +17,26 @@ export default async function DashboardPage() {
     return null; // Middleware will handle redirect
   }
 
-  // Get user's audiobooks
+  // Get user's audiobooks for display
   const audiobooks = await db.query.audiobooks.findMany({
     where: eq(audiobooksTable.userId, session.user.id),
     orderBy: [desc(audiobooksTable.createdAt)],
-    limit: 5,
+    limit: 6,
     with: {
       pdf: true
     }
   });
 
+  // Get all audiobooks for stats
+  const allAudiobooks = await db.query.audiobooks.findMany({
+    where: eq(audiobooksTable.userId, session.user.id),
+  });
+
   const stats = {
-    total: audiobooks.length,
-    completed: audiobooks.filter(book => book.processingStatus === "completed").length,
-    processing: audiobooks.filter(book => ["pending", "processing"].includes(book.processingStatus)).length,
-    failed: audiobooks.filter(book => book.processingStatus === "failed").length
+    total: allAudiobooks.length,
+    completed: allAudiobooks.filter(book => book.processingStatus === "completed").length,
+    processing: allAudiobooks.filter(book => ["pending", "processing"].includes(book.processingStatus)).length,
+    failed: allAudiobooks.filter(book => book.processingStatus === "failed").length
   };
 
   return (
