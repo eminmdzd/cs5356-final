@@ -7,7 +7,7 @@
 - optimize the app to increase rendering and processing speeds
 - Preprocess documents with an LLM to "clean" it for TTS.
 - Navbar loads slow
-- Home page loads very slow
+- Home page loads very slow.
 - Some nav bar issues after logging in
 
 **_Minor nitpicking_**
