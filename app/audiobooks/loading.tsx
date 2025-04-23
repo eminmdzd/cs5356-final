@@ -8,19 +8,21 @@ export default function AudiobooksLoading() {
         <Skeleton className="h-10 w-32" />
       </div>
 
-      <div className="space-y-4">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="border rounded-lg p-4 bg-card">
-            <div className="flex flex-col md:flex-row justify-between gap-4">
-              <div>
-                <Skeleton className="h-6 w-48 mb-2" />
-                <Skeleton className="h-4 w-64 mb-2" />
-                <Skeleton className="h-4 w-32" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="border rounded-lg overflow-hidden bg-card flex flex-col">
+            <div className="p-4 flex-1">
+              <div className="flex justify-between items-start mb-2">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-8 w-8 rounded-full" />
               </div>
-              <div className="flex flex-col sm:flex-row gap-4 self-end md:self-center">
-                <Skeleton className="h-10 w-[300px]" />
-                <Skeleton className="h-10 w-24" />
-              </div>
+              <Skeleton className="h-4 w-32 mb-2" />
+              <Skeleton className="h-5 w-20 mb-2" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+            <div className="p-4 pt-0 space-y-2">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
             </div>
           </div>
         ))}
