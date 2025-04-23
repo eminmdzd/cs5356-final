@@ -19,6 +19,7 @@ export function AudiobookProgress({
   const [progress, setProgress] = useState<number>(0);
   const [status, setStatus] = useState<string>("");
   const [isCancelling, setIsCancelling] = useState(false);
+  const [hasShownNotification, setHasShownNotification] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -46,7 +47,8 @@ export function AudiobookProgress({
             setStatus(data.status || "");
 
             // If processing is complete and the toast notification is enabled
-            if (data.status === "completed" && showCompleteMessage) {
+            if (data.status === "completed" && showCompleteMessage && !hasShownNotification) {
+              setHasShownNotification(true);
               toast.success("Audiobook generation complete!", {
                 action: {
                   label: "View Audiobook",
@@ -56,7 +58,8 @@ export function AudiobookProgress({
             }
 
             // If processing failed
-            if (data.status === "failed") {
+            if (data.status === "failed" && !hasShownNotification) {
+              setHasShownNotification(true);
               toast.error("Audiobook generation failed");
             }
           } else {
@@ -90,7 +93,7 @@ export function AudiobookProgress({
         source.close();
       }
     };
-  }, [audiobookId, router, showCompleteMessage, status]);
+  }, [audiobookId, router, showCompleteMessage, status, hasShownNotification]);
 
   // Function to handle cancellation
   const handleCancel = useCallback(async () => {

@@ -20,4 +20,4 @@
 - Duration seems to be incorrect
   - I believe we start by estimating the duration, but this should be updated
 - Processing status doesn't update without refresh, probably just missing revalidate somewhere
-- Multiple notifications
+- Sign in while signed in redirect to dashboard

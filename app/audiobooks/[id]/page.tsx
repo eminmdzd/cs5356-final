@@ -9,7 +9,6 @@ import { notFound } from "next/navigation"
 import { AudiobookProgress } from "@/components/audiobook-progress"
 import { PdfViewer } from "@/components/pdf-viewer"
 import AudioPlayer from "@/components/audio-player"
-import { toast } from "sonner"
 
 export const metadata = {
   title: "Audiobook Details - Audiobook Generator",
