@@ -55,12 +55,16 @@ export function AudiobookProgress({
                   onClick: () => router.push(`/audiobooks/${audiobookId}`),
                 },
               });
+              // Trigger revalidation to update the UI
+              router.refresh();
             }
 
             // If processing failed
             if (data.status === "failed" && !hasShownNotification) {
               setHasShownNotification(true);
               toast.error("Audiobook generation failed");
+              // Also refresh on failure to update the UI
+              router.refresh();
             }
           } else {
             console.log(`Progress update ignored: current=${lastProgress}, received=${newProgress}`);

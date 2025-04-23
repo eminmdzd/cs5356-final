@@ -1,5 +1,6 @@
 import { headers } from "next/headers"
 import Link from "next/link"
+import { Suspense } from "react"
 import { auth } from "@/lib/auth"
 import { db } from "@/database/db"
 import { audiobooks as audiobooksTable } from "@/database/schema"
@@ -7,13 +8,24 @@ import { desc, eq } from "drizzle-orm"
 import { Button } from "@/components/ui/button"
 import { deleteAudiobook, generateAudiobook, updateAudiobookTitle } from "@/actions/audiobook"
 import { AudiobookItem } from "@/components/audiobook-item"
+import AudiobooksLoading from "./loading"
 
 export const metadata = {
   title: "My Audiobooks - Audiobook Generator",
   description: "Manage your audiobooks"
 }
 
-export default async function AudiobooksPage() {
+async function getAudiobooks(userId: string) {
+  return db.query.audiobooks.findMany({
+    where: eq(audiobooksTable.userId, userId),
+    orderBy: [desc(audiobooksTable.createdAt)],
+    with: {
+      pdf: true
+    }
+  });
+}
+
+async function AudiobooksContent() {
   const session = await auth.api.getSession({
     headers: await headers()
   });
@@ -22,17 +34,10 @@ export default async function AudiobooksPage() {
     return null; // Middleware will handle redirect
   }
 
-  // Get user's audiobooks
-  const audiobooks = await db.query.audiobooks.findMany({
-    where: eq(audiobooksTable.userId, session.user.id),
-    orderBy: [desc(audiobooksTable.createdAt)],
-    with: {
-      pdf: true
-    }
-  });
+  const audiobooks = await getAudiobooks(session.user.id);
 
   return (
-    <main className="container self-center py-8">
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">My Audiobooks</h1>
         <Link href="/upload">
@@ -63,6 +68,16 @@ export default async function AudiobooksPage() {
           </Link>
         </div>
       )}
+    </>
+  );
+}
+
+export default async function AudiobooksPage() {
+  return (
+    <main className="container self-center py-8">
+      <Suspense fallback={<AudiobooksLoading />}>
+        <AudiobooksContent />
+      </Suspense>
     </main>
   );
 }
