@@ -2,10 +2,10 @@
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { useSession } from "@/lib/use-session"
+import { authClient } from "@/lib/auth-client"
 
 export function HomePage() {
-  const { session, loading } = useSession();
+  const { data: session, isPending } = authClient.useSession()
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
@@ -16,7 +16,7 @@ export function HomePage() {
         Upload your PDF documents and convert them to audiobooks using advanced text-to-speech technology.
       </p>
       <div className="flex gap-4">
-        {loading ? (
+        {isPending ? (
           <div className="h-12 w-52 animate-pulse rounded-md bg-muted"></div>
         ) : session ? (
           <>
