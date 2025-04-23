@@ -27,7 +27,8 @@ This application allows users to generate audiobooks from PDF files using Google
 - **Better Auth** - Authentication system
 - **Bull** - Redis-based job queue for background processing
 - **Google Cloud Text-to-Speech** - Long Audio API for converting text to speech
-- **Google Cloud Storage** - Cloud storage for audio files
+- **Vercel Blob Storage** - Cloud storage for PDFs and audio files in production
+- **Upstash Redis** - Serverless Redis for the job queue in production
 
 ### Database
 - **PostgreSQL** - Relational database
@@ -39,6 +40,7 @@ This application allows users to generate audiobooks from PDF files using Google
 - **Zod** - Schema validation
 - **SSE.js** - Server-sent events for real-time progress updates
 - **Docker** - Containerization for local development
+- **Vercel Cron Jobs** - For processing queued jobs in production
 
 ## Application Flow
 
@@ -50,18 +52,20 @@ This application allows users to generate audiobooks from PDF files using Google
 2. **PDF Upload Flow**
    - User uploads a PDF file from the upload page
    - PDF is validated for size and format
-   - Text is extracted from the PDF
+   - In development: PDF is stored in local filesystem
+   - In production: PDF is stored in Vercel Blob Storage
    - PDF metadata is stored in the database
 
 3. **Audiobook Generation Flow**
    - User initiates audiobook generation from the dashboard
    - A job is added to the Bull queue for processing
-   - Worker processes the job asynchronously:
+   - Worker processes the job:
      - Extracts text from PDF
      - Sends text to Google Cloud TTS API
-     - Stores the resulting audio file
+     - In development: Stores audio file locally
+     - In production: Stores audio in Vercel Blob Storage
      - Updates the database with the audio file location
-   - Real-time progress is shown to the user via server-sent events
+   - Real-time progress is shown to the user via Redis
 
 4. **Audiobook Management Flow**
    - Users can view all their audiobooks on the dashboard
@@ -100,8 +104,6 @@ This application allows users to generate audiobooks from PDF files using Google
 pnpm install
 ```
 
-ENSURE that ffmpeg is installed
-
 4. Start the database and Redis:
 
 ```bash
@@ -127,11 +129,49 @@ pnpm db:migrate
 pnpm dev
 ```
 
-8. Start the worker for processing background jobs:
+## Production Setup
 
-```bash
-NODE_ENV=development node --loader ts-node/esm workers/audiobook-worker.ts
+For deployment to Vercel, you'll need:
+
+1. **Vercel Account** - For hosting the application
+2. **Upstash Redis** - For the job queue
+3. **Vercel Blob Storage** - For storing PDFs and audio files
+4. **Google Cloud** - For Text-to-Speech API
+
+### Vercel Environment Variables
+
+Set these environment variables in your Vercel project:
+
 ```
+# Database
+DATABASE_URL=your-production-postgres-url
+
+# Authentication
+BETTER_AUTH_SECRET=your-production-secret-key
+BETTER_AUTH_URL=https://your-vercel-app-url.vercel.app
+
+# Google Cloud
+GOOGLE_APPLICATION_CREDENTIALS=./.google-credentials.json
+# Also add the JSON content of your Google credentials file as GOOGLE_CREDENTIALS_JSON
+
+# Redis
+UPSTASH_REDIS_REST_URL=your-upstash-redis-rest-url
+UPSTASH_REDIS_REST_TOKEN=your-upstash-redis-rest-token
+
+# Vercel Blob Storage
+BLOB_READ_WRITE_TOKEN=your-vercel-blob-read-write-token
+```
+
+### Google Credentials in Vercel
+
+Since you can't upload files to Vercel, create a build step that generates the Google credentials file from an environment variable:
+
+1. Add your entire Google credentials JSON content as an environment variable called `GOOGLE_CREDENTIALS_JSON`
+2. Vercel will create the credentials file during build using the JSON content
+
+### Vercel Cron Jobs
+
+The application uses Vercel Cron Jobs to process audiobook generation tasks. The `vercel.json` file configures a cron job to run every minute to process jobs in the queue.
 
 ## Environment Variables
 
@@ -153,16 +193,23 @@ GOOGLE_CLOUD_STORAGE_BUCKET=your-google-cloud-storage-bucket
 
 # Redis
 REDIS_URL=redis://localhost:6379
+# Only for production:
+# UPSTASH_REDIS_REST_URL=your-upstash-redis-rest-url
+# UPSTASH_REDIS_REST_TOKEN=your-upstash-redis-rest-token
+
+# Vercel Blob Storage (only for production)
+# BLOB_READ_WRITE_TOKEN=your-vercel-blob-read-write-token
 ```
 
 ## Project Structure
 
 - `/actions`: Server actions for PDF upload, audiobook generation and management
 - `/app`: Next.js app router pages and API routes
+- `/app/api/workers`: Serverless functions for processing audiobook jobs
 - `/components`: React components including UI elements and audiobook player
 - `/database`: Database schema, migrations and utilities
 - `/lib`: Utility functions, authentication, and queue management
-- `/public`: Static assets and generated audio files
+- `/public`: Static assets and generated audio files (in development)
 - `/styles`: Global CSS and auth override styles
 - `/workers`: Background job workers for audiobook processing
 
@@ -172,6 +219,7 @@ REDIS_URL=redis://localhost:6379
 - Maximum PDF size of 10MB
 - Only English text tested
 - Long PDFs may take significant time to process
+- In production, there's a 5-minute serverless function timeout
 
 ## Future Enhancements
 

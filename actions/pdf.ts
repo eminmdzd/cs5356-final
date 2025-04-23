@@ -10,6 +10,10 @@ import { z } from "zod"
 import { writeFile, mkdir } from "fs/promises"
 import { nanoid } from "nanoid"
 import path from "path"
+import { put } from "@vercel/blob"
+
+// Determine if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Validates the file is a PDF
 const validatePdfFile = (file: File) => {
@@ -42,22 +46,37 @@ export async function uploadPdf(formData: FormData) {
       return validation.error.errors[0].message
     }
 
-    // Get the original path if provided (for files uploaded from client's device)
-    const originalPath = formData.get("originalPath") as string || null;
-
     // Generate a unique file name
     const uniqueId = nanoid()
     const fileName = `${uniqueId}-${file.name.replace(/\s+/g, '-')}`
-    const uploadDir = path.resolve("public/uploads")
-    const filePath = `/uploads/${fileName}`
-    const fullPath = path.join(uploadDir, fileName)
+    let filePath = '';
+    let originalPath = null;
 
-    // Ensure upload directory exists
-    await mkdir(uploadDir, { recursive: true });
-
-    // Save the file to the uploads directory
+    // Get file buffer
     const buffer = Buffer.from(await file.arrayBuffer())
-    await writeFile(fullPath, buffer)
+
+    if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
+      // Use Vercel Blob Storage in production
+      const blob = await put(fileName, file, {
+        access: 'public',
+      });
+      
+      filePath = blob.url;
+      console.log(`File uploaded to Blob Storage: ${filePath}`);
+    } else {
+      // Use local filesystem in development
+      const uploadDir = path.resolve("public/uploads");
+      filePath = `/uploads/${fileName}`;
+      const fullPath = path.join(uploadDir, fileName);
+      originalPath = fullPath; // Store local path for development environment
+      
+      // Ensure upload directory exists
+      await mkdir(uploadDir, { recursive: true });
+      
+      // Save to local filesystem
+      await writeFile(fullPath, buffer);
+      console.log(`File saved locally: ${fullPath}`);
+    }
 
     // Create a record in the database
     const pdfData = {

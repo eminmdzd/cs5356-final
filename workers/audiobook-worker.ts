@@ -6,6 +6,11 @@ import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
+import { get, put, del } from '@vercel/blob';
+import * as https from 'https';
+
+// Determine if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Initialize Google Cloud TTS client
 let ttsClient: TextToSpeechClient;
@@ -37,6 +42,33 @@ async function checkIfCancelled(audiobookId: string): Promise<boolean> {
          audiobook?.errorDetails === 'Processing was cancelled by the user';
 }
 
+// Helper function to fetch content from a URL
+async function fetchFromUrl(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    https.get(url, (response) => {
+      // Check for redirect
+      if (response.statusCode === 302 || response.statusCode === 301) {
+        const redirectUrl = response.headers.location;
+        if (redirectUrl) {
+          console.log(`Worker: Following redirect to ${redirectUrl}`);
+          fetchFromUrl(redirectUrl).then(resolve).catch(reject);
+          return;
+        }
+      }
+      
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to fetch URL: ${response.statusCode}`));
+        return;
+      }
+
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      response.on('end', () => resolve(Buffer.concat(chunks)));
+      response.on('error', (err) => reject(err));
+    }).on('error', (err) => reject(err));
+  });
+}
+
 // Function to extract text from a PDF file
 async function extractTextFromPDF(filePath: string, originalPath?: string | null): Promise<string> {
   try {
@@ -48,35 +80,80 @@ async function extractTextFromPDF(filePath: string, originalPath?: string | null
       throw new Error("No file path provided for PDF extraction");
     }
 
-    // List the directories to help with debugging
-    try {
-      const publicDir = path.join(process.cwd(), "public");
-      const uploadsDir = path.join(publicDir, "uploads");
-
-      console.log(`Worker: Checking directories - Public: ${publicDir}, Uploads: ${uploadsDir}`);
-      await fs.access(publicDir);
-      console.log(`Worker: Public directory exists`);
-
+    // If we're in production and the path looks like a URL, use Blob Storage
+    if (isProduction && (filePath.startsWith('http://') || filePath.startsWith('https://'))) {
+      console.log(`Worker: Fetching PDF from Blob Storage URL: ${filePath}`);
       try {
-        await fs.access(uploadsDir);
-        console.log(`Worker: Uploads directory exists`);
-      } catch (error) {
-        console.log(`Worker: Uploads directory doesn't exist or can't be accessed`);
+        // If vercel/blob is available, use it
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+          const blob = await get(filePath);
+          if (blob) {
+            console.log(`Worker: Successfully fetched PDF from Blob Storage, URL: ${filePath}`);
+            // Convert arrayBuffer to Buffer
+            dataBuffer = Buffer.from(await blob.arrayBuffer());
+          } else {
+            throw new Error(`Blob not found at ${filePath}`);
+          }
+        } else {
+          // Fallback to HTTPS request
+          dataBuffer = await fetchFromUrl(filePath);
+          console.log(`Worker: Successfully fetched PDF via HTTPS, URL: ${filePath}, size: ${dataBuffer.length} bytes`);
+        }
+      } catch (blobError) {
+        console.error(`Worker: Error fetching PDF from URL: ${filePath}`, blobError);
+        throw new Error(`Failed to fetch PDF from URL: ${blobError.message}`);
       }
-    } catch (error) {
-      console.log(`Worker: Error checking directories:`, error);
-    }
-
-    // First try the original path if provided (for files uploaded from client's device)
-    if (originalPath) {
+    } else {
+      // Local file system logic for development
+      console.log(`Worker: Using local file system for PDF extraction`);
+      
+      // List the directories to help with debugging
       try {
-        console.log(`Worker: Attempting to read from original path: ${originalPath}`);
-        dataBuffer = await fs.readFile(originalPath);
-        console.log("Worker: Successfully read PDF from original path:", originalPath);
-      } catch (originalPathError) {
-        console.log("Worker: Failed to read from original path, falling back to app path:", originalPathError);
+        const publicDir = path.join(process.cwd(), "public");
+        const uploadsDir = path.join(publicDir, "uploads");
 
-        // Fall back to the app's public directory
+        console.log(`Worker: Checking directories - Public: ${publicDir}, Uploads: ${uploadsDir}`);
+        await fs.access(publicDir);
+        console.log(`Worker: Public directory exists`);
+
+        try {
+          await fs.access(uploadsDir);
+          console.log(`Worker: Uploads directory exists`);
+        } catch (error) {
+          console.log(`Worker: Uploads directory doesn't exist or can't be accessed`);
+        }
+      } catch (error) {
+        console.log(`Worker: Error checking directories:`, error);
+      }
+
+      // First try the original path if provided (for files uploaded from client's device)
+      if (originalPath) {
+        try {
+          console.log(`Worker: Attempting to read from original path: ${originalPath}`);
+          dataBuffer = await fs.readFile(originalPath);
+          console.log("Worker: Successfully read PDF from original path:", originalPath);
+        } catch (originalPathError) {
+          console.log("Worker: Failed to read from original path, falling back to app path:", originalPathError);
+
+          // Fall back to the app's public directory
+          const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+          const absolutePath = path.join(process.cwd(), "public", cleanPath);
+
+          console.log("Worker: Attempting to read PDF at:", absolutePath);
+
+          try {
+            await fs.access(absolutePath);
+            console.log(`Worker: File found at ${absolutePath}`);
+          } catch (error: any) {
+            console.error("Worker: File does not exist at path:", absolutePath);
+            throw new Error(`PDF file not found at ${absolutePath}`);
+          }
+
+          dataBuffer = await fs.readFile(absolutePath);
+          console.log(`Worker: Successfully read file from ${absolutePath}, size: ${dataBuffer.length} bytes`);
+        }
+      } else {
+        // No original path, use the app's public directory
         const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
         const absolutePath = path.join(process.cwd(), "public", cleanPath);
 
@@ -93,23 +170,6 @@ async function extractTextFromPDF(filePath: string, originalPath?: string | null
         dataBuffer = await fs.readFile(absolutePath);
         console.log(`Worker: Successfully read file from ${absolutePath}, size: ${dataBuffer.length} bytes`);
       }
-    } else {
-      // No original path, use the app's public directory
-      const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-      const absolutePath = path.join(process.cwd(), "public", cleanPath);
-
-      console.log("Worker: Attempting to read PDF at:", absolutePath);
-
-      try {
-        await fs.access(absolutePath);
-        console.log(`Worker: File found at ${absolutePath}`);
-      } catch (error: any) {
-        console.error("Worker: File does not exist at path:", absolutePath);
-        throw new Error(`PDF file not found at ${absolutePath}`);
-      }
-
-      dataBuffer = await fs.readFile(absolutePath);
-      console.log(`Worker: Successfully read file from ${absolutePath}, size: ${dataBuffer.length} bytes`);
     }
 
     console.log("Worker: Successfully read PDF file, size:", dataBuffer.length);
@@ -124,7 +184,6 @@ async function extractTextFromPDF(filePath: string, originalPath?: string | null
     }
   } catch (error: any) {
     console.error("Worker: Error extracting text from PDF:", error);
-
     throw new Error(`Failed to extract text from PDF: ${error.message}`);
   }
 }
@@ -206,10 +265,6 @@ async function generateAudioWithGoogleTTS(
     await setJobProgress(audiobookId, 20);
     console.log(`Worker: Updated progress for ${audiobookId} to 20%`);
 
-    // Create the output directory if it doesn't exist
-    const outputDir = path.join(process.cwd(), "public/audio");
-    await fs.mkdir(outputDir, { recursive: true });
-
     // Generate audio for each chunk
     const audioChunks: Buffer[] = [];
 
@@ -275,20 +330,113 @@ async function generateAudioWithGoogleTTS(
     console.log(`Worker: Combined ${audioChunks.length} audio chunks into a single file for audiobook ${audiobookId}`);
 
     // Save the final audio file
-    const audioPath = path.join(outputDir, `${outputFileName}.mp3`);
-    await fs.writeFile(audioPath, concatenatedAudio);
-    console.log(`Worker: Saved audio file to ${audioPath} for audiobook ${audiobookId}`);
+    let audioPath: string;
+    let mp3Buffer = concatenatedAudio;
+    
+    if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
+      // Use Vercel Blob Storage in production
+      const mp3Filename = `${outputFileName}.mp3`;
+      const blob = await put(mp3Filename, mp3Buffer, {
+        access: 'public',
+        contentType: 'audio/mpeg',
+      });
+      
+      audioPath = blob.url;
+      console.log(`Worker: Uploaded audio file to Blob Storage: ${audioPath} for audiobook ${audiobookId}`);
+    } else {
+      // Use local filesystem in development
+      const outputDir = path.join(process.cwd(), "public/audio");
+      await fs.mkdir(outputDir, { recursive: true });
+      
+      audioPath = `/audio/${outputFileName}.mp3`;
+      const localAudioPath = path.join(outputDir, `${outputFileName}.mp3`);
+      await fs.writeFile(localAudioPath, concatenatedAudio);
+      console.log(`Worker: Saved audio file to ${localAudioPath} for audiobook ${audiobookId}`);
+    }
 
     // Update progress to 90%
     await job.progress(90);
     await setJobProgress(audiobookId, 90);
     console.log(`Worker: Updated progress for ${audiobookId} to 90%`);
 
-    // Return the public path to the audio file
-    return `/audio/${outputFileName}.mp3`;
+    // Return the path to the audio file
+    return audioPath;
   } catch (error: any) {
     console.error(`Worker: Error generating audio with Google TTS for audiobook ${audiobookId}:`, error);
     throw new Error(`Failed to generate audio: ${error.message}`);
+  }
+}
+
+// Function to get audio duration
+async function getAudioDuration(audioPath: string, audiobookId: string, text: string): Promise<number> {
+  console.log(`Worker: Getting audio duration for ${audioPath}`);
+  
+  // Get approximate duration - estimate 150 words per minute
+  const wordCount = text.split(/\s+/).length;
+  const estimatedDuration = Math.ceil(wordCount / 150 * 60); // Duration in seconds
+  console.log(`Worker: Estimated duration: ${estimatedDuration} seconds (${wordCount} words) for audiobook ${audiobookId}`);
+  
+  try {
+    let actualDuration = estimatedDuration; // Fallback to estimated duration
+    
+    if (isProduction && (audioPath.startsWith('http://') || audioPath.startsWith('https://'))) {
+      // For Blob Storage URLs, we can only estimate duration in production
+      console.log(`Worker: Using estimated duration for Blob Storage: ${estimatedDuration} seconds`);
+      return estimatedDuration;
+    } else {
+      // In development, try to get more accurate duration from MP3 file
+      const audioFilePath = audioPath.startsWith('/') 
+        ? path.join(process.cwd(), "public", audioPath.slice(1))
+        : path.join(process.cwd(), "public", audioPath);
+        
+      // Get the total file size
+      const stats = await fs.stat(audioFilePath);
+      const fileSize = stats.size; // in bytes
+      
+      // Read first 100 bytes to analyze MP3 header
+      const fd = await fs.open(audioFilePath, 'r');
+      const buffer = Buffer.alloc(100);
+      await fd.read(buffer, 0, 100, 0);
+      await fd.close();
+      
+      // Check for MP3 header (starts with ID3 or with 0xFF 0xFB)
+      let bitRate = 0;
+      if (buffer.slice(0, 3).toString() === 'ID3') {
+        // ID3v2 tag found, now try to find the audio frame
+        // Skip the ID3 header which is 10 bytes + extended header size
+        const headerSize = 10;
+        const extendedSize = buffer[6] & 0x80 ? 
+          ((buffer[10] & 0x7f) << 21) | ((buffer[11] & 0x7f) << 14) | ((buffer[12] & 0x7f) << 7) | (buffer[13] & 0x7f) : 0;
+        
+        // Assuming 128kbps for most Google TTS MP3s
+        bitRate = 128 * 1000;
+      } else if ((buffer[0] === 0xFF) && ((buffer[1] & 0xE0) === 0xE0)) {
+        // Found MP3 frame header
+        const bitrateIndex = (buffer[2] & 0xF0) >> 4;
+        // Standard bitrates for MPEG1 Layer 3
+        const bitRates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+        bitRate = bitRates[bitrateIndex] * 1000;
+      } else {
+        // If we can't identify the header, use a reasonable default
+        bitRate = 128 * 1000; // Assume 128kbps for Google TTS
+      }
+      
+      if (bitRate > 0) {
+        // Calculate duration: fileSize (bytes) / (bitRate (bits/sec) / 8 bits per byte)
+        // We need to account for file headers, so this is approximate
+        const audioSize = fileSize * 0.95; // Reduce size slightly to account for headers
+        const durationInSeconds = audioSize / (bitRate / 8);
+        actualDuration = Math.ceil(durationInSeconds);
+        console.log(`Worker: Calculated audio duration: ${actualDuration} seconds (bitrate: ${bitRate/1000}kbps, size: ${fileSize} bytes) for audiobook ${audiobookId}`);
+      } else {
+        console.log(`Worker: Could not determine bitrate, using estimated duration: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
+      }
+      
+      return actualDuration;
+    }
+  } catch (error) {
+    console.error(`Worker: Error calculating audio duration, using estimate:`, error);
+    return estimatedDuration;
   }
 }
 
@@ -365,62 +513,8 @@ audiobookQueue.process(async (job: any) => {
       return { status: 'cancelled' };
     }
 
-    // Get approximate duration - estimate 150 words per minute
-    const wordCount = text.split(/\s+/).length;
-    const estimatedDuration = Math.ceil(wordCount / 150 * 60); // Duration in seconds
-    console.log(`Worker: Estimated duration: ${estimatedDuration} seconds (${wordCount} words) for audiobook ${audiobookId}`);
-
-    // Use MP3 header analysis to calculate duration more accurately
-    // This is a server-side compatible approach that doesn't rely on external tools like ffmpeg
-    let actualDuration = estimatedDuration; // Fallback to estimated duration
-    
-    try {
-      // Get the total file size
-      const audioFilePath = path.join(process.cwd(), "public", `audio/${outputFileName}.mp3`);
-      const stats = await fs.stat(audioFilePath);
-      const fileSize = stats.size; // in bytes
-      
-      // Read first 100 bytes to analyze MP3 header
-      const fd = await fs.open(audioFilePath, 'r');
-      const buffer = Buffer.alloc(100);
-      await fd.read(buffer, 0, 100, 0);
-      await fd.close();
-      
-      // Check for MP3 header (starts with ID3 or with 0xFF 0xFB)
-      let bitRate = 0;
-      if (buffer.slice(0, 3).toString() === 'ID3') {
-        // ID3v2 tag found, now try to find the audio frame
-        // Skip the ID3 header which is 10 bytes + extended header size
-        const headerSize = 10;
-        const extendedSize = buffer[6] & 0x80 ? 
-          ((buffer[10] & 0x7f) << 21) | ((buffer[11] & 0x7f) << 14) | ((buffer[12] & 0x7f) << 7) | (buffer[13] & 0x7f) : 0;
-        
-        // Assuming 128kbps for most Google TTS MP3s
-        bitRate = 128 * 1000;
-      } else if ((buffer[0] === 0xFF) && ((buffer[1] & 0xE0) === 0xE0)) {
-        // Found MP3 frame header
-        const bitrateIndex = (buffer[2] & 0xF0) >> 4;
-        // Standard bitrates for MPEG1 Layer 3
-        const bitRates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
-        bitRate = bitRates[bitrateIndex] * 1000;
-      } else {
-        // If we can't identify the header, use a reasonable default
-        bitRate = 128 * 1000; // Assume 128kbps for Google TTS
-      }
-      
-      if (bitRate > 0) {
-        // Calculate duration: fileSize (bytes) / (bitRate (bits/sec) / 8 bits per byte)
-        // We need to account for file headers, so this is approximate
-        const audioSize = fileSize * 0.95; // Reduce size slightly to account for headers
-        const durationInSeconds = audioSize / (bitRate / 8);
-        actualDuration = Math.ceil(durationInSeconds);
-        console.log(`Worker: Calculated audio duration: ${actualDuration} seconds (bitrate: ${bitRate/1000}kbps, size: ${fileSize} bytes) for audiobook ${audiobookId}`);
-      } else {
-        console.log(`Worker: Could not determine bitrate, using estimated duration: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
-      }
-    } catch (error) {
-      console.error(`Worker: Error calculating audio duration, using estimate:`, error);
-    }
+    // Get audio duration
+    const actualDuration = await getAudioDuration(audioPath, audiobookId, text);
 
     // Update the audiobook as completed
     console.log(`Worker: Updating audiobook ${audiobookId} status to completed`);
@@ -443,7 +537,7 @@ audiobookQueue.process(async (job: any) => {
     await setJobProgress(audiobookId, 100);
     console.log(`Worker: Progress set to 100% - Processing completed for audiobook ${audiobookId}`);
 
-    return { status: 'success', audioPath, duration: estimatedDuration };
+    return { status: 'success', audioPath, duration: actualDuration };
   } catch (error: any) {
     console.error('Worker: Error in audiobook worker:', error);
 

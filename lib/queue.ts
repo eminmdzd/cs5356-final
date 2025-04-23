@@ -1,19 +1,51 @@
 import Queue from 'bull';
 import { Redis } from 'ioredis';
 
-// Use Redis URL from environment or localhost with default port
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+// Determine if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Create Redis client for Bull
-const client = new Redis(redisUrl);
+// Redis configuration
+let redisConfig: any;
+let client: Redis;
 
-// Create and export the audiobook processing queue
-export const audiobookQueue = new Queue('audiobook-processing', {
-  redis: {
+if (isProduction && process.env.REDIS_URL) {
+  // Use Upstash Redis in production
+  console.log('Queue: Using Upstash Redis configuration');
+  
+  // Upstash Redis connection URL format
+  const redisUrl = process.env.REDIS_URL;
+  client = new Redis(redisUrl);
+  
+  // Configure Redis for Bull
+  redisConfig = {
     port: client.options.port || 6379,
     host: client.options.host || 'localhost',
     password: client.options.password,
-  },
+    tls: {
+      rejectUnauthorized: false, // Required for Upstash Redis connections over TLS
+    }
+  };
+  
+  // Also support KV REST API if available
+  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    console.log('Queue: Upstash KV REST API also available');
+  }
+} else {
+  // Use local Redis in development
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  client = new Redis(redisUrl);
+  
+  // Configure Redis for Bull
+  redisConfig = {
+    port: client.options.port || 6379,
+    host: client.options.host || 'localhost',
+    password: client.options.password,
+  };
+}
+
+// Create and export the audiobook processing queue
+export const audiobookQueue = new Queue('audiobook-processing', {
+  redis: redisConfig,
   limiter: {
     // Limit to 5 jobs per minute to avoid rate limiting in Google TTS API
     max: 6,
@@ -23,8 +55,9 @@ export const audiobookQueue = new Queue('audiobook-processing', {
 
 // Auto-initialize worker in the same process
 // This is important for Next.js development mode where we don't have separate worker processes
-if (typeof window === 'undefined') { // Only run in server context
-  console.log('Queue: Auto-initializing worker process');
+// In production, workers should be separate serverless functions
+if (typeof window === 'undefined' && !isProduction) { 
+  console.log('Queue: Auto-initializing worker process in development mode');
 
   // Import worker dynamically to prevent circular dependencies
   import('../workers/audiobook-worker')

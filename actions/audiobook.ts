@@ -7,10 +7,13 @@ import { db } from "@/database/db"
 import { audiobooks, pdfs } from "@/database/schema"
 import { and, eq } from "drizzle-orm"
 import { TextToSpeechClient } from "@google-cloud/text-to-speech"
-import { Storage } from "@google-cloud/storage"
 import * as fs from "fs/promises"
 import * as path from "path"
 import { setJobProgress } from "@/lib/queue"
+import { del } from "@vercel/blob"
+
+// Determine if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Initialize Google Cloud clients
 let ttsClient: TextToSpeechClient;
@@ -203,8 +206,17 @@ export async function deleteAudiobook(formData: FormData) {
     // If there's an audio file, delete it
     if (audiobook.audioPath) {
       try {
-        const filePath = path.join(process.cwd(), "public", audiobook.audioPath);
-        await fs.unlink(filePath);
+        if (isProduction && process.env.BLOB_READ_WRITE_TOKEN &&
+            (audiobook.audioPath.startsWith('http://') || audiobook.audioPath.startsWith('https://'))) {
+          // Delete from Vercel Blob Storage
+          await del(audiobook.audioPath);
+          console.log(`Deleted audiobook file from Blob Storage: ${audiobook.audioPath}`);
+        } else {
+          // Delete from local filesystem
+          const filePath = path.join(process.cwd(), "public", audiobook.audioPath);
+          await fs.unlink(filePath);
+          console.log(`Deleted audiobook file from local filesystem: ${filePath}`);
+        }
       } catch (error) {
         console.error("Error deleting audio file:", error);
         // Continue with deletion even if file removal fails

@@ -1,0 +1,17 @@
+{
+  "crons": [
+    {
+      "path": "/api/workers/audiobook",
+      "schedule": "* * * * *"
+    }
+  ],
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install",
+  "outputDirectory": ".next",
+  "functions": {
+    "app/api/workers/audiobook/route.ts": {
+      "memory": 1024,
+      "maxDuration": 300
+    }
+  }
+}
