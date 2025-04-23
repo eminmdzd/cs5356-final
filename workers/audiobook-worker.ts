@@ -370,6 +370,30 @@ audiobookQueue.process(async (job: any) => {
     const estimatedDuration = Math.ceil(wordCount / 150 * 60); // Duration in seconds
     console.log(`Worker: Estimated duration: ${estimatedDuration} seconds (${wordCount} words) for audiobook ${audiobookId}`);
 
+    // Get the actual audio duration using ffprobe
+    let actualDuration = estimatedDuration; // Fallback to estimated duration
+    try {
+      // We're using the child_process exec to get the audio duration
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execPromise = util.promisify(exec);
+      
+      const audioPath = path.join(process.cwd(), "public", `audio/${outputFileName}.mp3`);
+      // Use ffprobe to get the actual duration
+      const { stdout } = await execPromise(`ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`);
+      
+      // Parse the duration (ffprobe returns duration in seconds)
+      const durationInSeconds = parseFloat(stdout.trim());
+      if (!isNaN(durationInSeconds)) {
+        actualDuration = Math.ceil(durationInSeconds);
+        console.log(`Worker: Actual audio duration: ${actualDuration} seconds for audiobook ${audiobookId}`);
+      } else {
+        console.log(`Worker: Could not parse actual duration, using estimate: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
+      }
+    } catch (error) {
+      console.error(`Worker: Error getting actual audio duration, using estimate:`, error);
+    }
+
     // Update the audiobook as completed
     console.log(`Worker: Updating audiobook ${audiobookId} status to completed`);
     await db
@@ -377,7 +401,7 @@ audiobookQueue.process(async (job: any) => {
       .set({
         processingStatus: "completed",
         audioPath: audioPath,
-        duration: estimatedDuration
+        duration: actualDuration 
       })
       .where(
         and(

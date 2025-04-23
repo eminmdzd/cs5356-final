@@ -6,7 +6,6 @@
 - send emails
 - optimize the app to increase rendering and processing speeds
 - Preprocess documents with an LLM to "clean" it for TTS.
-- Duration seems to be incorrect
 
 **_Minor nitpicking_**
 - navbar should become invisible after logout

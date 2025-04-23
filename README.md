@@ -100,6 +100,8 @@ This application allows users to generate audiobooks from PDF files using Google
 pnpm install
 ```
 
+ENSURE that ffmpeg is installed
+
 4. Start the database and Redis:
 
 ```bash
