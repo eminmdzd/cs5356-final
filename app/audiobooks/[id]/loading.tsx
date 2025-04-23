@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export default function AudiobookDetailsLoading() {
   return (
-    <main className="container self-center p-8">
+    <>
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
           <Skeleton className="h-10 w-32" />
@@ -31,6 +31,6 @@ export default function AudiobookDetailsLoading() {
           </div>
         </div>
       </div>
-    </main>
+    </>
   )
 } 

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { deleteAudiobook, generateAudiobook, updateAudiobookTitle } from "@/actions/audiobook"
 import { AudiobookItem } from "@/components/audiobook-item"
 import AudiobooksLoading from "./loading"
+import { AudiobookProgress } from "@/components/audiobook-progress"
+import { AudiobookCard } from "@/components/audiobook-card"
 
 export const metadata = {
   title: "My Audiobooks - Audiobook Generator",
@@ -46,15 +48,9 @@ async function AudiobooksContent() {
       </div>
 
       {audiobooks.length > 0 ? (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {audiobooks.map((book) => (
-            <AudiobookItem
-              key={book.id}
-              audiobook={book}
-              deleteAction={deleteAudiobook}
-              generateAction={generateAudiobook}
-              updateTitleAction={updateAudiobookTitle}
-            />
+            <AudiobookCard key={book.id} audiobook={book} />
           ))}
         </div>
       ) : (
@@ -80,4 +76,45 @@ export default async function AudiobooksPage() {
       </Suspense>
     </main>
   );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const colors = {
+    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400",
+    processing: "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-400",
+    completed: "bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-400",
+    failed: "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-400"
+  };
+
+  const labels = {
+    pending: "Pending",
+    processing: "Processing",
+    completed: "Completed",
+    failed: "Failed"
+  };
+
+  // @ts-ignore
+  const colorClass = colors[status] || colors.pending;
+  // @ts-ignore
+  const label = labels[status] || "Unknown";
+
+  const isAnimated = status === "processing" || status === "pending";
+
+  return (
+    <span className={`inline-block px-2 py-1 text-xs rounded-full ${colorClass} ${isAnimated ? 'animate-pulse' : ''}`}>
+      {label}
+    </span>
+  );
+}
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+  } else {
+    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  }
 }
