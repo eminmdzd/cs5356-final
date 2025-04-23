@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { notFound } from "next/navigation"
 import { AudiobookProgress } from "@/components/audiobook-progress"
 import { PdfViewer } from "@/components/pdf-viewer"
+import AudioPlayer from "@/components/audio-player"
 import { toast } from "sonner"
 
 export const metadata = {
@@ -133,13 +134,11 @@ export default async function AudiobookDetailsPage({
           {audiobook.processingStatus === "completed" && audiobook.audioPath && (
             <div className="mt-6">
               <h2 className="text-xl font-semibold mb-4">Audio</h2>
-              <audio
-                controls
-                className="w-full"
-                src={audiobook.audioPath}
-              >
-                Your browser does not support the audio element.
-              </audio>
+              <AudioPlayer 
+                audioPath={audiobook.audioPath}
+                audiobookId={audiobook.id}
+                storedDuration={audiobook.duration || 0}
+              />
             </div>
           )}
 

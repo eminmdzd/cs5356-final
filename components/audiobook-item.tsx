@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
+import AudioPlayer from "@/components/audio-player"
 
 type AudiobookItemProps = {
   audiobook: any // Using any since we're passing the full audiobook with pdf relation
@@ -164,13 +165,13 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction, updateT
 
         <div className="flex flex-col sm:flex-row gap-4 self-end md:self-center">
           {status === "completed" && audiobook.audioPath ? (
-            <audio
-              controls
-              className="max-w-full w-[300px]"
-              src={audiobook.audioPath}
-            >
-              Your browser does not support the audio element.
-            </audio>
+            <div className="max-w-full w-[300px]">
+              <AudioPlayer 
+                audioPath={audiobook.audioPath}
+                audiobookId={audiobook.id}
+                storedDuration={audiobook.duration || 0}
+              />
+            </div>
           ) : status === "failed" ? (
             <Button
               onClick={handleGenerate}

@@ -370,28 +370,56 @@ audiobookQueue.process(async (job: any) => {
     const estimatedDuration = Math.ceil(wordCount / 150 * 60); // Duration in seconds
     console.log(`Worker: Estimated duration: ${estimatedDuration} seconds (${wordCount} words) for audiobook ${audiobookId}`);
 
-    // Get the actual audio duration using ffprobe
+    // Use MP3 header analysis to calculate duration more accurately
+    // This is a server-side compatible approach that doesn't rely on external tools like ffmpeg
     let actualDuration = estimatedDuration; // Fallback to estimated duration
+    
     try {
-      // We're using the child_process exec to get the audio duration
-      const { exec } = await import('child_process');
-      const util = await import('util');
-      const execPromise = util.promisify(exec);
+      // Get the total file size
+      const audioFilePath = path.join(process.cwd(), "public", `audio/${outputFileName}.mp3`);
+      const stats = await fs.stat(audioFilePath);
+      const fileSize = stats.size; // in bytes
       
-      const audioPath = path.join(process.cwd(), "public", `audio/${outputFileName}.mp3`);
-      // Use ffprobe to get the actual duration
-      const { stdout } = await execPromise(`ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`);
+      // Read first 100 bytes to analyze MP3 header
+      const fd = await fs.open(audioFilePath, 'r');
+      const buffer = Buffer.alloc(100);
+      await fd.read(buffer, 0, 100, 0);
+      await fd.close();
       
-      // Parse the duration (ffprobe returns duration in seconds)
-      const durationInSeconds = parseFloat(stdout.trim());
-      if (!isNaN(durationInSeconds)) {
-        actualDuration = Math.ceil(durationInSeconds);
-        console.log(`Worker: Actual audio duration: ${actualDuration} seconds for audiobook ${audiobookId}`);
+      // Check for MP3 header (starts with ID3 or with 0xFF 0xFB)
+      let bitRate = 0;
+      if (buffer.slice(0, 3).toString() === 'ID3') {
+        // ID3v2 tag found, now try to find the audio frame
+        // Skip the ID3 header which is 10 bytes + extended header size
+        const headerSize = 10;
+        const extendedSize = buffer[6] & 0x80 ? 
+          ((buffer[10] & 0x7f) << 21) | ((buffer[11] & 0x7f) << 14) | ((buffer[12] & 0x7f) << 7) | (buffer[13] & 0x7f) : 0;
+        
+        // Assuming 128kbps for most Google TTS MP3s
+        bitRate = 128 * 1000;
+      } else if ((buffer[0] === 0xFF) && ((buffer[1] & 0xE0) === 0xE0)) {
+        // Found MP3 frame header
+        const bitrateIndex = (buffer[2] & 0xF0) >> 4;
+        // Standard bitrates for MPEG1 Layer 3
+        const bitRates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+        bitRate = bitRates[bitrateIndex] * 1000;
       } else {
-        console.log(`Worker: Could not parse actual duration, using estimate: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
+        // If we can't identify the header, use a reasonable default
+        bitRate = 128 * 1000; // Assume 128kbps for Google TTS
+      }
+      
+      if (bitRate > 0) {
+        // Calculate duration: fileSize (bytes) / (bitRate (bits/sec) / 8 bits per byte)
+        // We need to account for file headers, so this is approximate
+        const audioSize = fileSize * 0.95; // Reduce size slightly to account for headers
+        const durationInSeconds = audioSize / (bitRate / 8);
+        actualDuration = Math.ceil(durationInSeconds);
+        console.log(`Worker: Calculated audio duration: ${actualDuration} seconds (bitrate: ${bitRate/1000}kbps, size: ${fileSize} bytes) for audiobook ${audiobookId}`);
+      } else {
+        console.log(`Worker: Could not determine bitrate, using estimated duration: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
       }
     } catch (error) {
-      console.error(`Worker: Error getting actual audio duration, using estimate:`, error);
+      console.error(`Worker: Error calculating audio duration, using estimate:`, error);
     }
 
     // Update the audiobook as completed
