@@ -14,6 +14,4 @@
 
 **_Issues_**
 
-- make sure every user in global blob storage gets audio and pdf files under their user directory
-
 **_Done_**

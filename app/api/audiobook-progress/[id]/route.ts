@@ -8,7 +8,7 @@ import { and, eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, context: { params: { id: string } }) {
   // Verify user is authenticated
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -18,8 +18,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Need to await params before using
-  const { id } = await params;
+  // Get the id from params
+  const { id } = context.params;
 
   // Verify the audiobook belongs to the user
   const audiobook = await db.query.audiobooks.findFirst({

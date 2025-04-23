@@ -337,6 +337,62 @@ export async function generateAudiobook(formData: FormData) {
   }
 }
 
+export async function updateAudiobookTitle(formData: FormData) {
+  // Verify user is authenticated
+  const session = await auth.api.getSession({
+    headers: await headers()
+  });
+
+  if (!session || !session.user) {
+    return "Not authenticated; please log in.";
+  }
+
+  try {
+    const audiobookId = formData.get("id") as string;
+    const title = formData.get("title") as string;
+
+    if (!audiobookId) {
+      return "Audiobook ID is required";
+    }
+
+    if (!title) {
+      return "Title is required";
+    }
+
+    // Verify the audiobook belongs to the user
+    const audiobook = await db.query.audiobooks.findFirst({
+      where: and(
+        eq(audiobooks.id, audiobookId),
+        eq(audiobooks.userId, session.user.id)
+      )
+    });
+
+    if (!audiobook) {
+      return "Audiobook not found or you don't have permission to update it";
+    }
+
+    // Update the audiobook title
+    await db
+      .update(audiobooks)
+      .set({ title })
+      .where(
+        and(
+          eq(audiobooks.id, audiobookId),
+          eq(audiobooks.userId, session.user.id)
+        )
+      );
+
+    revalidatePath("/audiobooks");
+    revalidatePath("/dashboard");
+    revalidatePath(`/audiobooks/${audiobookId}`);
+
+    return "success";
+  } catch (error: any) {
+    console.error("Error updating audiobook title:", error);
+    return error.message || "Failed to update audiobook title";
+  }
+}
+
 export async function deleteAudiobook(formData: FormData) {
   // Verify user is authenticated
   const session = await auth.api.getSession({

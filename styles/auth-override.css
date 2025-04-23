@@ -1,0 +1,20 @@
+/* Override auth UI styles */
+.auth-password-container {
+  position: relative;
+}
+
+.auth-password-container input {
+  padding-right: 2.5rem !important;
+}
+
+.auth-password-container button {
+  position: absolute !important;
+  right: 0 !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+.auth-password-container svg {
+  position: relative !important;
+  right: 0 !important;
+}

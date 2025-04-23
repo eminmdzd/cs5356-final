@@ -20,8 +20,7 @@ export default async function AudiobookDetailsPage({
 }: {
   params: { id: string }
 }) {
-  // Need to await params before using it
-  const { id } = await params;
+  const { id } = params;
   
   const session = await auth.api.getSession({
     headers: await headers()

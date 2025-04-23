@@ -3,17 +3,22 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import { Input } from "@/components/ui/input"
 
 type AudiobookItemProps = {
   audiobook: any // Using any since we're passing the full audiobook with pdf relation
   deleteAction: (formData: FormData) => Promise<string>
   generateAction: (formData: FormData) => Promise<string>
+  updateTitleAction?: (formData: FormData) => Promise<string>
 }
 
-export function AudiobookItem({ audiobook, deleteAction, generateAction }: AudiobookItemProps) {
+export function AudiobookItem({ audiobook, deleteAction, generateAction, updateTitleAction }: AudiobookItemProps) {
   const [isProcessing, setIsProcessing] = useState(audiobook.processingStatus === "processing")
   const [isDeleting, setIsDeleting] = useState(false)
   const [status, setStatus] = useState(audiobook.processingStatus)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [title, setTitle] = useState(audiobook.title)
 
   const handleGenerate = async () => {
     setIsProcessing(true)
@@ -38,11 +43,15 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
     }
   }
 
-  const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this audiobook?")) {
-      return
-    }
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true)
+  }
 
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false)
+  }
+
+  const handleConfirmDelete = async () => {
     setIsDeleting(true)
 
     try {
@@ -53,6 +62,7 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
 
       if (result === "success") {
         toast.success("Audiobook deleted successfully")
+        setShowDeleteModal(false)
       } else {
         toast.error(result)
         setIsDeleting(false)
@@ -61,6 +71,40 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
       console.error("Error deleting audiobook:", error)
       toast.error("Failed to delete audiobook")
       setIsDeleting(false)
+    }
+  }
+
+  const handleTitleEdit = () => {
+    setIsEditing(true)
+  }
+
+  const handleTitleSave = async () => {
+    if (!updateTitleAction) {
+      setIsEditing(false)
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append("id", audiobook.id)
+      formData.append("title", title)
+
+      const result = await updateTitleAction(formData)
+
+      if (result === "success") {
+        toast.success("Title updated successfully")
+      } else {
+        toast.error(result)
+        // Reset to original title
+        setTitle(audiobook.title)
+      }
+    } catch (error) {
+      console.error("Error updating title:", error)
+      toast.error("Failed to update title")
+      // Reset to original title
+      setTitle(audiobook.title)
+    } finally {
+      setIsEditing(false)
     }
   }
 
@@ -75,7 +119,29 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
     <div className="border rounded-lg p-4 bg-card">
       <div className="flex flex-col md:flex-row justify-between gap-4">
         <div>
-          <h2 className="text-xl font-medium">{audiobook.title}</h2>
+          {isEditing ? (
+            <div className="flex items-center gap-2 mb-2">
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-64"
+              />
+              <Button size="sm" onClick={handleTitleSave}>Save</Button>
+              <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>Cancel</Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 mb-2">
+              <h2 className="text-xl font-medium">{audiobook.title}</h2>
+              <Button 
+                size="sm" 
+                variant="ghost"
+                className="h-6 w-6 rounded-full p-0"
+                onClick={handleTitleEdit}
+              >
+                ✏️
+              </Button>
+            </div>
+          )}
           <p className="text-sm text-muted-foreground">
             Original PDF: {audiobook.pdf.fileName}
           </p>
@@ -117,13 +183,39 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction }: Audio
           <Button
             variant="destructive"
             className="self-center"
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             disabled={isProcessing || isDeleting}
           >
             {isDeleting ? "Deleting..." : "Delete"}
           </Button>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card p-6 rounded-lg max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Confirm Deletion</h3>
+            <p className="mb-6">Are you sure you want to delete "{audiobook.title}"? This action cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleCancelDelete}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

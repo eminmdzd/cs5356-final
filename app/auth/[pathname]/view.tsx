@@ -30,6 +30,10 @@ export function AuthView({
                   tabs: {
                     list: "gap-2",
                   }
+                },
+                inputs: {
+                  // Use custom styling for password inputs 
+                  password: "pr-10 relative"
                 }
               }}
             />

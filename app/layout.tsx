@@ -1,7 +1,8 @@
 import '@/styles/globals.css'
+import '@/styles/auth-override.css'
 import { Inter } from 'next/font/google'
 import { Providers } from './providers'
-import { Header } from '@/components/header'
+import { ClientHeader } from '@/components/client-header'
 
 export const metadata = {
   title: 'Audiobook Generator',
@@ -24,7 +25,7 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased dark`}>
         <Providers>
           <div className="flex min-h-svh flex-col">
-            <Header />
+            <ClientHeader />
             {children}
           </div>
         </Providers>
