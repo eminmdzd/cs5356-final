@@ -10,7 +10,17 @@ import { TextToSpeechClient } from "@google-cloud/text-to-speech"
 import * as fs from "fs/promises"
 import * as path from "path"
 import { setJobProgress } from "@/lib/queue"
-import { del } from "@vercel/blob"
+// Import Vercel Blob conditionally
+let vercelBlob: any = { del: null };
+try {
+  if (process.env.NODE_ENV === 'production') {
+    import('@vercel/blob').then(module => {
+      vercelBlob = module;
+    });
+  }
+} catch (error) {
+  console.warn('Vercel Blob not available, using local filesystem for storage');
+}
 
 // Determine if we're in production
 const isProduction = process.env.NODE_ENV === 'production';
@@ -206,11 +216,15 @@ export async function deleteAudiobook(formData: FormData) {
     // If there's an audio file, delete it
     if (audiobook.audioPath) {
       try {
-        if (isProduction && process.env.BLOB_READ_WRITE_TOKEN &&
+        if (isProduction && process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.del &&
             (audiobook.audioPath.startsWith('http://') || audiobook.audioPath.startsWith('https://'))) {
-          // Delete from Vercel Blob Storage
-          await del(audiobook.audioPath);
-          console.log(`Deleted audiobook file from Blob Storage: ${audiobook.audioPath}`);
+          try {
+            // Delete from Vercel Blob Storage
+            await vercelBlob.del(audiobook.audioPath);
+            console.log(`Deleted audiobook file from Blob Storage: ${audiobook.audioPath}`);
+          } catch (error) {
+            console.error(`Error deleting file from Blob Storage: ${audiobook.audioPath}`, error);
+          }
         } else {
           // Delete from local filesystem
           const filePath = path.join(process.cwd(), "public", audiobook.audioPath);

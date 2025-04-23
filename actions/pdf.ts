@@ -10,7 +10,17 @@ import { z } from "zod"
 import { writeFile, mkdir } from "fs/promises"
 import { nanoid } from "nanoid"
 import path from "path"
-import { put } from "@vercel/blob"
+// Import Vercel Blob conditionally to allow development without it
+let vercelBlob: any = { put: null };
+try {
+  if (process.env.NODE_ENV === 'production') {
+    import('@vercel/blob').then(module => {
+      vercelBlob = module;
+    });
+  }
+} catch (error) {
+  console.warn('Vercel Blob not available, using local filesystem for storage');
+}
 
 // Determine if we're in production
 const isProduction = process.env.NODE_ENV === 'production';
@@ -55,14 +65,30 @@ export async function uploadPdf(formData: FormData) {
     // Get file buffer
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
-      // Use Vercel Blob Storage in production
-      const blob = await put(fileName, file, {
-        access: 'public',
-      });
-      
-      filePath = blob.url;
-      console.log(`File uploaded to Blob Storage: ${filePath}`);
+    if (isProduction && process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.put) {
+      try {
+        // Use Vercel Blob Storage in production
+        const blob = await vercelBlob.put(fileName, file, {
+          access: 'public',
+        });
+        
+        filePath = blob.url;
+        console.log(`File uploaded to Blob Storage: ${filePath}`);
+      } catch (error) {
+        console.error("Error uploading to Blob Storage, falling back to local:", error);
+        // Fall back to local storage
+        const uploadDir = path.resolve("public/uploads");
+        filePath = `/uploads/${fileName}`;
+        const fullPath = path.join(uploadDir, fileName);
+        originalPath = fullPath; // Store local path for development environment
+        
+        // Ensure upload directory exists
+        await mkdir(uploadDir, { recursive: true });
+        
+        // Save to local filesystem
+        await writeFile(fullPath, buffer);
+        console.log(`File saved locally: ${fullPath}`);
+      }
     } else {
       // Use local filesystem in development
       const uploadDir = path.resolve("public/uploads");

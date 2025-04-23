@@ -204,7 +204,7 @@ export function AudiobookItem({ audiobook, deleteAction, generateAction, updateT
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card p-6 rounded-lg max-w-md w-full shadow-xl">
             <h3 className="text-lg font-semibold mb-4">Confirm Deletion</h3>
-            <p className="mb-6">Are you sure you want to delete "{audiobook.title}"? This action cannot be undone.</p>
+            <p className="mb-6">Are you sure you want to delete &quot;{audiobook.title}&quot;? This action cannot be undone.</p>
             <div className="flex justify-end gap-2">
               <Button 
                 variant="outline" 

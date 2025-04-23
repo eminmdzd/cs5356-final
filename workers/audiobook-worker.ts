@@ -6,7 +6,17 @@ import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
-import { get, put, del } from '@vercel/blob';
+// Import Vercel Blob conditionally
+let vercelBlob: any = { get: null, put: null, del: null };
+try {
+  if (process.env.NODE_ENV === 'production') {
+    import('@vercel/blob').then(module => {
+      vercelBlob = module;
+    });
+  }
+} catch (error) {
+  console.warn('Worker: Vercel Blob not available, using local filesystem for storage');
+}
 import * as https from 'https';
 
 // Determine if we're in production
@@ -85,14 +95,21 @@ async function extractTextFromPDF(filePath: string, originalPath?: string | null
       console.log(`Worker: Fetching PDF from Blob Storage URL: ${filePath}`);
       try {
         // If vercel/blob is available, use it
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-          const blob = await get(filePath);
-          if (blob) {
-            console.log(`Worker: Successfully fetched PDF from Blob Storage, URL: ${filePath}`);
-            // Convert arrayBuffer to Buffer
-            dataBuffer = Buffer.from(await blob.arrayBuffer());
-          } else {
-            throw new Error(`Blob not found at ${filePath}`);
+        if (process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.get) {
+          try {
+            const blob = await vercelBlob.get(filePath);
+            if (blob) {
+              console.log(`Worker: Successfully fetched PDF from Blob Storage, URL: ${filePath}`);
+              // Convert arrayBuffer to Buffer
+              dataBuffer = Buffer.from(await blob.arrayBuffer());
+            } else {
+              throw new Error(`Blob not found at ${filePath}`);
+            }
+          } catch (error) {
+            console.error(`Worker: Error accessing Blob storage, falling back to HTTPS: ${error.message}`);
+            // Fall back to HTTPS request
+            dataBuffer = await fetchFromUrl(filePath);
+            console.log(`Worker: Successfully fetched PDF via HTTPS fallback, URL: ${filePath}, size: ${dataBuffer.length} bytes`);
           }
         } else {
           // Fallback to HTTPS request
@@ -333,16 +350,28 @@ async function generateAudioWithGoogleTTS(
     let audioPath: string;
     let mp3Buffer = concatenatedAudio;
     
-    if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
-      // Use Vercel Blob Storage in production
-      const mp3Filename = `${outputFileName}.mp3`;
-      const blob = await put(mp3Filename, mp3Buffer, {
-        access: 'public',
-        contentType: 'audio/mpeg',
-      });
-      
-      audioPath = blob.url;
-      console.log(`Worker: Uploaded audio file to Blob Storage: ${audioPath} for audiobook ${audiobookId}`);
+    if (isProduction && process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.put) {
+      try {
+        // Use Vercel Blob Storage in production
+        const mp3Filename = `${outputFileName}.mp3`;
+        const blob = await vercelBlob.put(mp3Filename, mp3Buffer, {
+          access: 'public',
+          contentType: 'audio/mpeg',
+        });
+        
+        audioPath = blob.url;
+        console.log(`Worker: Uploaded audio file to Blob Storage: ${audioPath} for audiobook ${audiobookId}`);
+      } catch (error) {
+        console.error(`Worker: Error uploading to Blob Storage, falling back to local: ${error.message}`);
+        // Fall back to local filesystem
+        const outputDir = path.join(process.cwd(), "public/audio");
+        await fs.mkdir(outputDir, { recursive: true });
+        
+        audioPath = `/audio/${outputFileName}.mp3`;
+        const localAudioPath = path.join(outputDir, `${outputFileName}.mp3`);
+        await fs.writeFile(localAudioPath, concatenatedAudio);
+        console.log(`Worker: Saved audio file to local filesystem: ${localAudioPath} for audiobook ${audiobookId}`);
+      }
     } else {
       // Use local filesystem in development
       const outputDir = path.join(process.cwd(), "public/audio");

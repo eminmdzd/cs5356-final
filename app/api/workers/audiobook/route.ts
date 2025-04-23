@@ -30,7 +30,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: 'processing', jobId: job.id });
   } catch (error) {
     console.error('API Worker: Error processing job:', error);
-    return NextResponse.json({ status: 'error', message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { 
+        status: 'error', 
+        message: error instanceof Error ? error.message : 'Unknown error' 
+      }, 
+      { status: 500 }
+    );
   }
 }
 
@@ -62,6 +68,12 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('API Worker: Error getting queue status:', error);
-    return NextResponse.json({ status: 'error', message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { 
+        status: 'error', 
+        message: error instanceof Error ? error.message : 'Unknown error' 
+      }, 
+      { status: 500 }
+    );
   }
 }
