@@ -28,25 +28,47 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Initialize Google Cloud clients
 let ttsClient: TextToSpeechClient;
 try {
-  // In production, we should have credentials in .google-credentials.json
   const isProduction = process.env.NODE_ENV === 'production';
-  const credentialsPath = './.google-credentials.json';
   
   console.log(`Initializing Google TTS client in ${isProduction ? 'production' : 'development'} mode`);
   
   if (isProduction) {
-    // In production, we use the credentials file that was generated during build
-    console.log(`Using credentials file at ${credentialsPath}`);
-    ttsClient = new TextToSpeechClient({
-      keyFilename: credentialsPath
-    });
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    // In development, we use the credentials file path from env var
+    // In production, directly use credentials from environment variables
+    if (process.env.GOOGLE_PROJECT_ID && 
+        process.env.GOOGLE_PRIVATE_KEY && 
+        process.env.GOOGLE_CLIENT_EMAIL) {
+      
+      // Create credentials object directly from environment variables
+      const credentials = {
+        projectId: process.env.GOOGLE_PROJECT_ID,
+        credentials: {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL,
+          private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
+        }
+      };
+      
+      console.log(`Using Google credentials directly from environment variables`);
+      ttsClient = new TextToSpeechClient(credentials);
+    } 
+    // Fall back to credentials file if available
+    else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      console.log(`Falling back to credentials file: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
+      ttsClient = new TextToSpeechClient({
+        keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+      });
+    } 
+    else {
+      throw new Error("No Google credentials found in production environment");
+    }
+  } 
+  // Development mode - use credentials file
+  else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     console.log(`Using credentials file from GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
     ttsClient = new TextToSpeechClient({
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
     });
-  } else {
+  } 
+  else {
     throw new Error("No Google credentials found. In development, set GOOGLE_APPLICATION_CREDENTIALS environment variable.")
   }
   
