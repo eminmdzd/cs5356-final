@@ -69,7 +69,7 @@ async function DashboardContent() {
             <div key={book.id} className="border rounded-lg overflow-hidden bg-card flex flex-col">
               <div className="p-4 flex-1">
                 <h3 className="text-xl font-medium truncate">{book.title}</h3>
-                <p className="text-muted-foreground text-sm mb-2">
+                <p className="text-muted-foreground text-sm truncate mb-2">
                   {book.pdf.fileName}
                 </p>
                 <StatusBadge status={book.processingStatus} />

@@ -7,6 +7,14 @@ export async function middleware(request: NextRequest) {
         headers: await headers()
     });
 
+    if (request.url.endsWith("/auth/sign-in")) {
+        if (session) {
+            return NextResponse.redirect(new URL("/dashboard", request.url))
+        } else {
+            return NextResponse.next()
+        }
+    }
+
     if (!session) {
         return NextResponse.redirect(new URL("/auth/sign-in", request.url));
     }
@@ -16,5 +24,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
     runtime: "nodejs",
-    matcher: ["/dashboard", "/audiobooks", "/upload"]
+    matcher: ["/dashboard", "/audiobooks", "/upload", "/auth/sign-in"]
 }

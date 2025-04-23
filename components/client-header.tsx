@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { UserButton } from "@daveyplate/better-auth-ui"
 import { authClient } from "@/lib/auth-client"
 
-export function ClientHeader() {
+export function Header() {
   const { data: session, isPending } = authClient.useSession()
 
   return (
