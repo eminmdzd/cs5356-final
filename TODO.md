@@ -10,8 +10,6 @@
 
 **_Minor nitpicking_**
 - navbar should become invisible after logout
-- update readme.md
-- sign in page is ugly
 - add hover states to buttons
 
 **_Issues_**
