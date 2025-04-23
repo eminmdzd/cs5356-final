@@ -1,3 +1,5 @@
+***Todo***
+
 - Cloud storage
 - Extract PDF text on client since there are Next server action body size limits
   - PDF file still stored in bucket storage along with processed audio file
@@ -11,6 +13,3 @@
 - add hover states to buttons
 
 **_Issues_**
-
-**_Done_**
-- eye icon on the right
