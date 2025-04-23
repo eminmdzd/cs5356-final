@@ -3,7 +3,6 @@
   - PDF file still stored in bucket storage along with processed audio file
 - Add hover state to buttons
 - send emails
-- if a worker has picked up the job, switch to "processing", if not, keep at "pending"
 
 **_Minor nitpicking_**
 
@@ -15,12 +14,6 @@
 
 **_Issues_**
 
-- super slow and users are not being given a clue onto what is happening during upload and processing
 - make sure every user in global blob storage gets audio and pdf files under their user directory
 
 **_Done_**
-
-- users can access original PDF
-- users can cancel and retry generation
-- fixed the issue where the app wants the pdf files to come from /public directory
--
