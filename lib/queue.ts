@@ -84,6 +84,8 @@ export interface AudiobookJobData {
   pdfId: string;
   userId: string;
   audiobookId: string;
+  force?: boolean;     // Flag to force regeneration even if completed
+  isRecovery?: boolean; // Flag to indicate this is a recovery job
 }
 
 // Method to add job to the queue

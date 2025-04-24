@@ -127,7 +127,37 @@ export async function generateAudiobook(formData: FormData) {
       targetAudiobookId = existingAudiobook.id;
     }
 
-    console.log(`Starting audiobook generation for ID ${targetAudiobookId}`);
+    // Get current status of the audiobook to check if it should be regenerated
+    const currentAudiobook = await db.query.audiobooks.findFirst({
+      where: and(
+        eq(audiobooks.id, targetAudiobookId),
+        eq(audiobooks.userId, session.user.id)
+      )
+    });
+
+    if (!currentAudiobook) {
+      return "Audiobook not found or you don't have permission to access it";
+    }
+
+    // Only regenerate if the audiobook has failed or is pending
+    // Do not regenerate completed audiobooks unless there's a specific flag
+    const forceFlag = formData.get("force") === "true";
+    const shouldRegenerate = forceFlag || 
+                             currentAudiobook.processingStatus === "failed" ||
+                             currentAudiobook.processingStatus === "pending";
+
+    if (!shouldRegenerate && currentAudiobook.processingStatus === "completed") {
+      console.log(`Audiobook ${targetAudiobookId} is already completed, skipping regeneration`);
+      return "already-completed";
+    }
+
+    console.log(`Starting audiobook generation for ID ${targetAudiobookId} ${forceFlag ? "(forced)" : ""}`);
+
+    // If the audiobook is already in processing state, don't start another job
+    if (currentAudiobook.processingStatus === "processing") {
+      console.log(`Audiobook ${targetAudiobookId} is already processing, skipping new job creation`);
+      return "already-processing";
+    }
 
     // Clear any previous error details and update status to processing
     await db
@@ -157,7 +187,8 @@ export async function generateAudiobook(formData: FormData) {
     const job = await addAudiobookJob({
       pdfId,
       userId: session.user.id,
-      audiobookId: targetAudiobookId
+      audiobookId: targetAudiobookId,
+      force: forceFlag
     });
 
     console.log(`Added job ${job.id} to queue for audiobook ${targetAudiobookId}`);

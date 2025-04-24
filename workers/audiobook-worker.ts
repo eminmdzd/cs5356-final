@@ -524,20 +524,15 @@ async function generateAudioWithGoogleTTS(
 async function getAudioDuration(audioPath: string, audiobookId: string, text: string): Promise<number> {
   console.log(`Worker: Getting audio duration for ${audioPath}`);
   
-  // Get approximate duration - estimate 150 words per minute
+  // Get approximate duration - estimate 150 words per minute (as fallback)
   const wordCount = text.split(/\s+/).length;
   const estimatedDuration = Math.ceil(wordCount / 150 * 60); // Duration in seconds
   console.log(`Worker: Estimated duration: ${estimatedDuration} seconds (${wordCount} words) for audiobook ${audiobookId}`);
   
   try {
-    let actualDuration = estimatedDuration; // Fallback to estimated duration
-    
-    if (isProduction && (audioPath.startsWith('http://') || audioPath.startsWith('https://'))) {
-      // For Blob Storage URLs, we can only estimate duration in production
-      console.log(`Worker: Using estimated duration for Blob Storage: ${estimatedDuration} seconds`);
-      return estimatedDuration;
-    } else {
-      // In development, try to get more accurate duration from MP3 file
+    // For local files, get duration from the MP3 directly
+    if (!isProduction || !(audioPath.startsWith('http://') || audioPath.startsWith('https://'))) {
+      // Process local file path 
       const audioFilePath = audioPath.startsWith('/') 
         ? path.join(process.cwd(), "public", audioPath.slice(1))
         : path.join(process.cwd(), "public", audioPath);
@@ -579,14 +574,48 @@ async function getAudioDuration(audioPath: string, audiobookId: string, text: st
         // We need to account for file headers, so this is approximate
         const audioSize = fileSize * 0.95; // Reduce size slightly to account for headers
         const durationInSeconds = audioSize / (bitRate / 8);
-        actualDuration = Math.ceil(durationInSeconds);
+        const actualDuration = Math.ceil(durationInSeconds);
         console.log(`Worker: Calculated audio duration: ${actualDuration} seconds (bitrate: ${bitRate/1000}kbps, size: ${fileSize} bytes) for audiobook ${audiobookId}`);
-      } else {
-        console.log(`Worker: Could not determine bitrate, using estimated duration: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
+        return actualDuration;
       }
-      
-      return actualDuration;
+    } 
+    // For production URLs, attempt to fetch and analyze the audio file
+    else if (isProduction && (audioPath.startsWith('http://') || audioPath.startsWith('https://'))) {
+      try {
+        console.log(`Worker: Attempting to calculate duration for remote file: ${audioPath}`);
+        
+        // Fetch the audio file headers using a HEAD request to get content-length
+        const response = await fetch(audioPath, { method: 'HEAD' });
+        
+        if (response.ok) {
+          const contentLength = response.headers.get('content-length');
+          const contentType = response.headers.get('content-type');
+          
+          if (contentLength && contentType?.includes('audio')) {
+            // Parse the content length as an integer
+            const fileSize = parseInt(contentLength, 10);
+            // Assume standard bitrate for Google TTS MP3s (128kbps)
+            const bitRate = 128 * 1000;
+            
+            // Calculate duration: fileSize (bytes) / (bitRate (bits/sec) / 8 bits per byte)
+            const audioSize = fileSize * 0.95; // Reduce size slightly to account for headers
+            const durationInSeconds = audioSize / (bitRate / 8);
+            const calculatedDuration = Math.ceil(durationInSeconds);
+            
+            console.log(`Worker: Calculated remote audio duration: ${calculatedDuration} seconds (size: ${fileSize} bytes) for audiobook ${audiobookId}`);
+            return calculatedDuration;
+          }
+        }
+        
+        console.log(`Worker: Could not fetch remote file headers, using estimated duration: ${estimatedDuration} seconds`);
+      } catch (error) {
+        console.error(`Worker: Error calculating remote audio duration, using estimate:`, error);
+      }
     }
+    
+    // If we reach here, fall back to estimated duration
+    console.log(`Worker: Using estimated duration: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
+    return estimatedDuration;
   } catch (error) {
     console.error(`Worker: Error calculating audio duration, using estimate:`, error);
     return estimatedDuration;
@@ -669,6 +698,38 @@ audiobookQueue.process(async (job: any) => {
     // Get audio duration
     const actualDuration = await getAudioDuration(audioPath, audiobookId, text);
 
+    // Get existing audiobook data before updating
+    const existingAudiobook = await db.query.audiobooks.findFirst({
+      where: and(
+        eq(audiobooks.id, audiobookId),
+        eq(audiobooks.userId, userId)
+      )
+    });
+
+    // Delete old audio file if it exists and is different from new one
+    if (existingAudiobook?.audioPath && existingAudiobook.audioPath !== audioPath) {
+      try {
+        if (isProduction && process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.del &&
+            (existingAudiobook.audioPath.startsWith('http://') || existingAudiobook.audioPath.startsWith('https://'))) {
+          try {
+            // Delete from Vercel Blob Storage
+            await vercelBlob.del(existingAudiobook.audioPath);
+            console.log(`Worker: Deleted old audiobook file from Blob Storage: ${existingAudiobook.audioPath}`);
+          } catch (deleteError) {
+            console.error(`Worker: Error deleting old file from Blob Storage: ${existingAudiobook.audioPath}`, deleteError);
+          }
+        } else if (!existingAudiobook.audioPath.startsWith('http://') && !existingAudiobook.audioPath.startsWith('https://')) {
+          // Delete from local filesystem
+          const filePath = path.join(process.cwd(), "public", existingAudiobook.audioPath.replace(/^\//, ''));
+          await fs.unlink(filePath);
+          console.log(`Worker: Deleted old audiobook file from local filesystem: ${filePath}`);
+        }
+      } catch (error) {
+        console.error(`Worker: Error deleting old audio file: ${existingAudiobook.audioPath}`, error);
+        // Continue with update even if file removal fails
+      }
+    }
+
     // Update the audiobook as completed
     console.log(`Worker: Updating audiobook ${audiobookId} status to completed`);
     await db
@@ -736,6 +797,47 @@ audiobookQueue.on('active', async (job) => {
     // When a job becomes active, update the audiobook status to "processing" and set progress
     const { audiobookId, userId } = job.data as AudiobookJobData;
 
+    // First, check if this audiobook belongs to this user and if it should be processed
+    const audiobook = await db.query.audiobooks.findFirst({
+      where: and(
+        eq(audiobooks.id, audiobookId),
+        eq(audiobooks.userId, userId)
+      )
+    });
+
+    if (!audiobook) {
+      console.error(`Worker: Audiobook ${audiobookId} not found for user ${userId}, cancelling job`);
+      await job.discard();
+      return;
+    }
+
+    // Check if this audiobook is already completed and shouldn't be reprocessed
+    if (audiobook.processingStatus === "completed") {
+      console.log(`Worker: Audiobook ${audiobookId} is already completed, checking for force flag`);
+      
+      // Check if there's a forced regeneration flag in the job data
+      const forceRegeneration = job.data.force === true;
+      
+      if (!forceRegeneration) {
+        console.log(`Worker: Audiobook ${audiobookId} is already completed and no force flag, skipping`);
+        await job.discard();
+        return;
+      }
+    }
+
+    // Check if there are already other jobs processing this audiobook
+    const activeJobs = await audiobookQueue.getActive();
+    const otherActiveJobs = activeJobs.filter(j => 
+      j.id !== job.id && 
+      j.data.audiobookId === audiobookId
+    );
+
+    if (otherActiveJobs.length > 0) {
+      console.log(`Worker: Audiobook ${audiobookId} is already being processed by job ${otherActiveJobs[0].id}, cancelling this job`);
+      await job.discard();
+      return;
+    }
+
     // Update the database record to "processing"
     await db
       .update(audiobooks)
@@ -744,7 +846,10 @@ audiobookQueue.on('active', async (job) => {
         errorDetails: null,
       })
       .where(
-        eq(audiobooks.id, audiobookId)
+        and(
+          eq(audiobooks.id, audiobookId),
+          eq(audiobooks.userId, userId)
+        )
       );
 
     console.log(`Worker: Updated audiobook ${audiobookId} status to processing`);
@@ -778,45 +883,63 @@ async function recoverStaleJobs() {
 
     console.log(`Worker: Found ${activeJobs.length} active, ${waitingJobs.length} waiting, and ${delayedJobs.length} delayed jobs`);
 
-    // Check if there are any jobs in processing state
+    // Check if there are any audiobooks in processing state without active jobs
     const processingAudiobooks = await db.query.audiobooks.findMany({
-      where: (fields, { eq }) => eq(fields.processingStatus, "processing")
+      where: (fields, { eq }) => eq(fields.processingStatus, "processing"),
+      with: {
+        pdf: true
+      }
     });
 
     if (processingAudiobooks.length > 0) {
       console.log(`Worker: Found ${processingAudiobooks.length} audiobooks in processing state`);
 
-      // Check for any that don't have active jobs and create jobs for them
+      // Create a map of all jobs by audiobook ID for faster lookup
       const activeJobIds = new Set(activeJobs.map(job => (job.data as AudiobookJobData).audiobookId));
       const waitingJobIds = new Set(waitingJobs.map(job => (job.data as AudiobookJobData).audiobookId));
       const delayedJobIds = new Set(delayedJobs.map(job => (job.data as AudiobookJobData).audiobookId));
-
       const allJobIds = new Set([...activeJobIds, ...waitingJobIds, ...delayedJobIds]);
 
+      // Track which audiobooks we've already handled to avoid duplicate jobs
+      const handledAudiobookIds = new Set();
+
       for (const book of processingAudiobooks) {
-        if (!allJobIds.has(book.id)) {
-          console.log(`Worker: Creating job for audiobook ${book.id} that's in processing state but has no job`);
+        // Skip if this audiobook already has a job or if we've already handled it
+        if (allJobIds.has(book.id) || handledAudiobookIds.has(book.id)) {
+          console.log(`Worker: Audiobook ${book.id} already has a job or has been handled, skipping`);
+          continue;
+        }
 
-          try {
-            // Get the PDF info
-            const pdf = await db.query.pdfs.findFirst({
-              where: eq(pdfs.id, book.pdfId)
-            });
+        // Check if the PDF exists
+        if (!book.pdf) {
+          console.error(`Worker: PDF not found for audiobook ${book.id}, marking as failed`);
+          await db
+            .update(audiobooks)
+            .set({
+              processingStatus: "failed",
+              errorDetails: "PDF file is missing"
+            })
+            .where(
+              eq(audiobooks.id, book.id)
+            );
+          continue;
+        }
 
-            if (pdf) {
-              // Add job to queue
-              await addAudiobookJob({
-                pdfId: book.pdfId,
-                userId: book.userId,
-                audiobookId: book.id
-              });
-              console.log(`Worker: Successfully created job for audiobook ${book.id}`);
-            } else {
-              console.error(`Worker: Could not find PDF ${book.pdfId} for audiobook ${book.id}`);
-            }
-          } catch (error) {
-            console.error(`Worker: Error creating job for audiobook ${book.id}:`, error);
-          }
+        console.log(`Worker: Creating recovery job for audiobook ${book.id} (${book.title})`);
+
+        try {
+          // Add job to queue with recovery flag
+          await addAudiobookJob({
+            pdfId: book.pdfId,
+            userId: book.userId,
+            audiobookId: book.id,
+            isRecovery: true // Mark as a recovery job
+          });
+          
+          handledAudiobookIds.add(book.id);
+          console.log(`Worker: Successfully created recovery job for audiobook ${book.id}`);
+        } catch (error) {
+          console.error(`Worker: Error creating recovery job for audiobook ${book.id}:`, error);
         }
       }
     }

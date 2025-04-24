@@ -154,6 +154,12 @@ async function AudiobookContent({ id }: { id: string }) {
                 // Add the audiobook ID to the form data
                 formData.append('audiobookId', id);
                 formData.append('pdfId', audiobook.pdfId);
+                
+                // Only regenerate audiobooks that have failed
+                // This is where the "Retry Processing" button is shown
+                if (audiobook.processingStatus === "failed") {
+                  formData.append('force', 'true');
+                }
 
                 // Call the server action
                 const result = await generateAudiobook(formData);
