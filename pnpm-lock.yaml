@@ -114,9 +114,6 @@ importers:
       sonner:
         specifier: ^2.0.1
         version: 2.0.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      sse.js:
-        specifier: ^2.6.0
-        version: 2.6.0
       tailwind-merge:
         specifier: ^3.2.0
         version: 3.2.0
@@ -3934,9 +3931,6 @@ packages:
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
-
-  sse.js@2.6.0:
-    resolution: {integrity: sha512-eGEqOwiPX9Cm+KsOYkcz7HIEqWUSOFeChr0sT515hDOBLvQy5yxaLSZx9JWMhwjf75CXJq+7cgG1MKNh9GQ36w==}
 
   standard-as-callback@2.1.0:
     resolution: {integrity: sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==}
@@ -8252,8 +8246,6 @@ snapshots:
   source-map@0.6.1: {}
 
   split2@4.2.0: {}
-
-  sse.js@2.6.0: {}
 
   standard-as-callback@2.1.0: {}
 
