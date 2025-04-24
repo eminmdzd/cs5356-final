@@ -13,7 +13,7 @@ export default function AudioPlayer({ audioPath, audiobookId, storedDuration }: 
   const [hasLoadedMetadata, setHasLoadedMetadata] = useState(false)
   const [hasUpdatedDuration, setHasUpdatedDuration] = useState(false)
   
-  // This effect handles updating the audiobook duration if it doesn't match
+  // This effect handles updating the audiobook duration when the audio metadata is loaded
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
@@ -24,11 +24,8 @@ export default function AudioPlayer({ audioPath, audiobookId, storedDuration }: 
       // Get the actual duration from the audio element
       const actualDuration = Math.ceil(audio.duration)
       
-      // If the actual duration is significantly different from the stored duration, update it
-      const durationDifference = Math.abs(actualDuration - storedDuration)
-      const thresholdPercent = 0.1 // 10% difference threshold
-      
-      if (durationDifference > storedDuration * thresholdPercent && !hasUpdatedDuration) {
+      // Always update the duration with the accurate value from the audio element
+      if (!hasUpdatedDuration) {
         console.log(`Updating duration: stored=${storedDuration}s, actual=${actualDuration}s`)
         
         try {

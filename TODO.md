@@ -1,8 +1,6 @@
 ***Todo***
-
+- are the chunks correct?
 - Cloud storage
-- Extract PDF text on client since there are Next server action body size limits
-  - PDF file still stored in bucket storage along with processed audio file
 - send emails
 - optimize the app to increase rendering and processing speeds
 - Preprocess documents with an LLM to "clean" it for TTS.
@@ -14,10 +12,14 @@
 - bug where status changes after completion of generation
 - sometimes the times do not match
 - created ones fail if others fail
-
-
+- rely on one fast pdf extraction logic
 
 ***Minor nitpicks***
 - the update title pencil is gone and not quite clear ui on how to do it
 - eye icon on sign up page looks weird.. almost as if there are two eye icons on top of each other
 - when generating audio there are 2 values for percentage of completion
+
+
+***Won't fix***
+- Extract PDF text on client since there are Next server action body size limits
+  - PDF file still stored in bucket storage along with processed audio file

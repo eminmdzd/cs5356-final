@@ -138,7 +138,7 @@ export function AudiobookProgress({
       else if (progress <= 15) statusLabel = "Starting text extraction...";
       else if (progress <= 20) statusLabel = "Extracting text...";
       else if (progress <= 40) statusLabel = "Preparing audio generation...";
-      else if (progress <= 90) statusLabel = `Generating audio... ${progress}%`;
+      else if (progress <= 90) statusLabel = "Generating audio...";
       else statusLabel = "Finalizing...";
       break;
     case "completed":
