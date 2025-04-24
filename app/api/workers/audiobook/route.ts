@@ -1,40 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { audiobookQueue, AudiobookJobData } from '@/lib/queue';
 
-// This endpoint can be used to manually trigger job processing
-// instead of relying on cron
+// This endpoint is obsolete. Audiobook processing is now handled directly in server actions and progress is tracked in the database.
 export const runtime = 'nodejs';
-export const maxDuration = 55; // Vercel hobby plan has a limit of 60 seconds
+export const maxDuration = 55;
 
-// POST handler to manually process jobs if needed
 export async function POST(request: NextRequest) {
-  try {
-    // Check if we have Upstash Redis
-    const hasUpstashRedis = process.env.REDIS_URL && process.env.REDIS_URL.includes('upstash');
-    console.log(`Worker API: Using ${hasUpstashRedis ? 'Upstash Redis' : 'local Redis'}`);
-    
-    // Import the worker module dynamically to ensure it's initialized
-    // This will only be needed if the worker isn't already running
-    const worker = await import('@/workers/audiobook-worker');
-    
-    // We don't need to explicitly get the next job anymore since
-    // the worker processes jobs automatically
-    
-    // Return response immediately
-    return NextResponse.json({ status: 'success', message: 'Worker initialized' });
-  } catch (error) {
-    console.error('API Worker: Error initializing worker:', error);
-    return NextResponse.json(
-      { 
-        status: 'error', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
-      }, 
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({ status: 'obsolete', message: 'Audiobook worker endpoint is obsolete. Processing is handled directly in server actions.' }, { status: 410 });
 }
 
-// GET handler to check queue status
+export async function GET(request: NextRequest) {
+  return NextResponse.json({ status: 'obsolete', message: 'Audiobook worker endpoint is obsolete. Progress is tracked in the database.' }, { status: 410 });
+}
 export async function GET(request: NextRequest) {
   try {
     // Get queue information

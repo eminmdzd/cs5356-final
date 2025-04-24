@@ -128,7 +128,9 @@ export function AudiobookProgress({
 
   // Determine label text based on status and progress
   let statusLabel = "";
-  switch (status) {
+  // Treat 'success' as 'processing' for label purposes
+  const normalizedStatus = status === "success" ? "processing" : status;
+  switch (normalizedStatus) {
     case "pending":
       statusLabel = "Pending";
       break;

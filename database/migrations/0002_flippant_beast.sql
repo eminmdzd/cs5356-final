@@ -1,0 +1,1 @@
+ALTER TABLE "audiobooks" ADD COLUMN "progress" integer DEFAULT 0 NOT NULL;

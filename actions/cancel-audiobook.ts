@@ -6,7 +6,6 @@ import { auth } from "@/lib/auth"
 import { db } from "@/database/db"
 import { audiobooks } from "@/database/schema"
 import { and, eq } from "drizzle-orm"
-import { setJobProgress } from "@/lib/queue"
 
 export async function cancelAudiobookGeneration(formData: FormData) {
   // Verify user is authenticated
