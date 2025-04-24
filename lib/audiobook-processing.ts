@@ -61,11 +61,16 @@ export async function processAudiobookJob({
 
     // 1. Extract PDF text
     let dataBuffer: Buffer;
-    if (pdfPath.startsWith('http://') || pdfPath.startsWith('https://')) {
-      // For production, fetch from URL (implement fetch logic if needed)
-      throw new Error('Remote PDF fetch not implemented in this stub');
+    const isRemote = pdfPath.startsWith('http://') || pdfPath.startsWith('https://');
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isRemote && isProd) {
+      // Fetch from Vercel Blob Storage or remote URL
+      const response = await fetch(pdfPath);
+      if (!response.ok) throw new Error(`Failed to fetch remote PDF: ${response.statusText}`);
+      const arrayBuffer = await response.arrayBuffer();
+      dataBuffer = Buffer.from(arrayBuffer);
     } else {
-      // Local file system
+      // Local file system (dev)
       const cleanPath = pdfPath.startsWith('/') ? pdfPath.slice(1) : pdfPath;
       const absolutePath = path.join(process.cwd(), 'public', cleanPath);
       dataBuffer = await fs.readFile(absolutePath);
@@ -78,9 +83,11 @@ export async function processAudiobookJob({
     const chunks = splitTextIntoChunks(text, 5000);
     await db.update(audiobooks).set({ progress: 40 }).where(eq(audiobooks.id, audiobookId));
 
-    // 3. Generate audio for each chunk
-    const audioBuffers: Buffer[] = [];
-    for (let i = 0; i < chunks.length; i++) {
+    // 3. Generate audio for each chunk (max 5 concurrent)
+    const audioBuffers: Buffer[] = new Array(chunks.length);
+    const concurrency = 5;
+    let completed = 0;
+    async function synthesizeChunk(i: number) {
       const synthesisInput = { text: chunks[i] };
       const voice = {
         languageCode: 'en-US',
@@ -97,10 +104,19 @@ export async function processAudiobookJob({
       const buffer = Buffer.isBuffer(response.audioContent)
         ? response.audioContent
         : Buffer.from(response.audioContent as string, 'base64');
-      audioBuffers.push(buffer);
-      // Progress: 40 + (i+1)/chunks.length*50
-      const progress = 40 + Math.floor(((i + 1) / chunks.length) * 50);
+      audioBuffers[i] = buffer;
+      completed++;
+      // Progress: 40 + (completed/chunks.length)*50
+      const progress = 40 + Math.floor((completed / chunks.length) * 50);
       await db.update(audiobooks).set({ progress }).where(eq(audiobooks.id, audiobookId));
+    }
+    // Process chunks in batches of 5
+    for (let batchStart = 0; batchStart < chunks.length; batchStart += concurrency) {
+      const batch = [];
+      for (let j = 0; j < concurrency && batchStart + j < chunks.length; j++) {
+        batch.push(synthesizeChunk(batchStart + j));
+      }
+      await Promise.all(batch);
     }
 
     // 4. Concatenate and save audio
