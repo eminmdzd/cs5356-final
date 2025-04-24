@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { SSE } from "sse.js";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -25,77 +24,76 @@ export function AudiobookProgress({
   useEffect(() => {
     if (!audiobookId) return;
 
-    let source: SSE;
     let isMounted = true;
     let lastProgress = 0; // Track the last progress value we've seen
-
-    const connectToEventSource = () => {
-      source = new SSE(`/api/audiobook-progress/${audiobookId}`);
-
-      source.addEventListener('message', (event: any) => {
-        if (!isMounted) return;
-
-        try {
-          const data = JSON.parse(event.data);
-          const newProgress = data.progress || 0;
-
-          // Only update progress if it's going up or if status changes
-          // This helps prevent progress from jumping backward
-          if (newProgress >= lastProgress || data.status !== status) {
-            lastProgress = newProgress;
-            setProgress(newProgress);
-            setStatus(data.status || "");
-
-            // If processing is complete and the toast notification is enabled
-            if (data.status === "completed" && showCompleteMessage && !hasShownNotification) {
-              setHasShownNotification(true);
-              toast.success("Audiobook generation complete!", {
-                action: {
-                  label: "View Audiobook",
-                  onClick: () => router.push(`/audiobooks/${audiobookId}`),
-                },
-              });
-              // Trigger revalidation to update the UI
-              router.refresh();
-            }
-
-            // If processing failed
-            if (data.status === "failed" && !hasShownNotification) {
-              setHasShownNotification(true);
-              toast.error("Audiobook generation failed");
-              // Also refresh on failure to update the UI
-              router.refresh();
-            }
-          } else {
-            console.log(`Progress update ignored: current=${lastProgress}, received=${newProgress}`);
-          }
-        } catch (error) {
-          console.error("Error parsing SSE data:", error);
+    let errorCount = 0; // Track consecutive errors for backoff
+    
+    // Function to fetch progress
+    const fetchProgress = async () => {
+      try {
+        const response = await fetch(`/api/audiobook-progress/${audiobookId}`);
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
         }
-      });
-
-      source.addEventListener('error', (error: any) => {
-        console.error("SSE connection error:", error);
-        source.close();
-
-        // Try to reconnect after a delay
-        setTimeout(() => {
-          if (isMounted) {
-            connectToEventSource();
+        
+        const data = await response.json();
+        const newProgress = data.progress || 0;
+        
+        // Only update if component is still mounted
+        if (!isMounted) return;
+        
+        // Only update progress if it's going up or if status changes
+        if (newProgress >= lastProgress || data.status !== status) {
+          lastProgress = newProgress;
+          setProgress(newProgress);
+          setStatus(data.status || "");
+          
+          // Reset error count on successful fetch
+          errorCount = 0;
+          
+          // If processing is complete and the toast notification is enabled
+          if (data.status === "completed" && showCompleteMessage && !hasShownNotification) {
+            setHasShownNotification(true);
+            toast.success("Audiobook generation complete!", {
+              action: {
+                label: "View Audiobook",
+                onClick: () => router.push(`/audiobooks/${audiobookId}`),
+              },
+            });
+            // Trigger revalidation to update the UI
+            router.refresh();
           }
-        }, 5000);
-      });
-
-      source.stream();
+          
+          // If processing failed
+          if (data.status === "failed" && !hasShownNotification) {
+            setHasShownNotification(true);
+            toast.error(data.errorDetails || "Audiobook generation failed");
+            // Also refresh on failure to update the UI
+            router.refresh();
+          }
+        } else {
+          console.log(`Progress update ignored: current=${lastProgress}, received=${newProgress}`);
+        }
+      } catch (error) {
+        console.error("Error fetching progress:", error);
+        errorCount++;
+      }
+      
+      // Schedule next poll if still mounted and not complete/failed
+      if (isMounted && status !== "completed" && status !== "failed") {
+        // Use exponential backoff for errors (max 30 seconds)
+        const delay = errorCount > 0 ? Math.min(5000 * Math.pow(1.5, errorCount - 1), 30000) : 5000;
+        setTimeout(fetchProgress, delay);
+      }
     };
-
-    connectToEventSource();
-
+    
+    // Start polling
+    fetchProgress();
+    
+    // Cleanup function
     return () => {
       isMounted = false;
-      if (source) {
-        source.close();
-      }
     };
   }, [audiobookId, router, showCompleteMessage, status, hasShownNotification]);
 
