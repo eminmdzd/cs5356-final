@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm"
 import { TextToSpeechClient } from "@google-cloud/text-to-speech"
 import * as fs from "fs/promises"
 import * as path from "path"
-import { setJobProgress } from "@/lib/queue"
+import { processAudiobookJob } from "@/lib/audiobook-processing"
 // Import Vercel Blob conditionally
 let vercelBlob: any = { del: null };
 try {
@@ -29,15 +29,14 @@ const isProduction = process.env.NODE_ENV === 'production';
 let ttsClient: TextToSpeechClient;
 try {
   const isProduction = process.env.NODE_ENV === 'production';
-  
   console.log(`Initializing Google TTS client in ${isProduction ? 'production' : 'development'} mode`);
-  
+
   if (isProduction) {
     // In production, directly use credentials from environment variables
-    if (process.env.GOOGLE_PROJECT_ID && 
-        process.env.GOOGLE_PRIVATE_KEY && 
+    if (process.env.GOOGLE_PROJECT_ID &&
+        process.env.GOOGLE_PRIVATE_KEY &&
         process.env.GOOGLE_CLIENT_EMAIL) {
-      
+
       // Create credentials object directly from environment variables
       const credentials = {
         projectId: process.env.GOOGLE_PROJECT_ID,
@@ -46,32 +45,32 @@ try {
           private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
         }
       };
-      
+
       console.log(`Using Google credentials directly from environment variables`);
       ttsClient = new TextToSpeechClient(credentials);
-    } 
+    }
     // Fall back to credentials file if available
     else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
       console.log(`Falling back to credentials file: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
       ttsClient = new TextToSpeechClient({
         keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
       });
-    } 
+    }
     else {
       throw new Error("No Google credentials found in production environment");
     }
-  } 
+  }
   // Development mode - use credentials file
   else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     console.log(`Using credentials file from GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
     ttsClient = new TextToSpeechClient({
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
     });
-  } 
+  }
   else {
     throw new Error("No Google credentials found. In development, set GOOGLE_APPLICATION_CREDENTIALS environment variable.")
   }
-  
+
   console.log("Google TTS client initialized successfully");
 } catch (error) {
   console.error("Failed to initialize Google TTS client:", error);
@@ -178,20 +177,21 @@ export async function generateAudiobook(formData: FormData) {
     revalidatePath("/dashboard");
     revalidatePath(`/audiobooks/${targetAudiobookId}`);
 
-    // Set initial progress to 5% - job added to queue
-    setJobProgress(targetAudiobookId, 5);
+    // Set initial progress to 5% in the DB
+    await db.update(audiobooks)
+      .set({ progress: 5 })
+      .where(and(
+        eq(audiobooks.id, targetAudiobookId),
+        eq(audiobooks.userId, session.user.id)
+      ));
 
-    // Add job to queue for processing by the worker
-    console.log('Adding job to queue for audiobook:', targetAudiobookId);
-    const { addAudiobookJob } = await import('@/lib/queue');
-    const job = await addAudiobookJob({
-      pdfId,
-      userId: session.user.id,
+    // Start processing asynchronously (do not await)
+    void processAudiobookJob({
       audiobookId: targetAudiobookId,
-      force: forceFlag
+      pdfPath: pdf.filePath,
+      userId: session.user.id,
+      ttsClient
     });
-
-    console.log(`Added job ${job.id} to queue for audiobook ${targetAudiobookId}`);
 
     return "success";
   } catch (error: any) {

@@ -9,7 +9,7 @@ const nextConfig = {
       bodySizeLimit: "10mb",
     },
   },
-  serverExternalPackages: ["pdf-parse"],
+  serverExternalPackages: ["pdf.js-extract"],
   // Temporarily disable type checking and linting during build
   typescript: {
     ignoreBuildErrors: true,

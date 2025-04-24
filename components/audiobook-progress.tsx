@@ -27,31 +27,31 @@ export function AudiobookProgress({
     let isMounted = true;
     let lastProgress = 0; // Track the last progress value we've seen
     let errorCount = 0; // Track consecutive errors for backoff
-    
+
     // Function to fetch progress
     const fetchProgress = async () => {
       try {
         const response = await fetch(`/api/audiobook-progress/${audiobookId}`);
-        
+
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
         }
-        
+
         const data = await response.json();
         const newProgress = data.progress || 0;
-        
+
         // Only update if component is still mounted
         if (!isMounted) return;
-        
+
         // Only update progress if it's going up or if status changes
         if (newProgress >= lastProgress || data.status !== status) {
           lastProgress = newProgress;
           setProgress(newProgress);
           setStatus(data.status || "");
-          
+
           // Reset error count on successful fetch
           errorCount = 0;
-          
+
           // If processing is complete and the toast notification is enabled
           if (data.status === "completed" && showCompleteMessage && !hasShownNotification) {
             setHasShownNotification(true);
@@ -64,7 +64,7 @@ export function AudiobookProgress({
             // Trigger revalidation to update the UI
             router.refresh();
           }
-          
+
           // If processing failed
           if (data.status === "failed" && !hasShownNotification) {
             setHasShownNotification(true);
@@ -79,7 +79,7 @@ export function AudiobookProgress({
         console.error("Error fetching progress:", error);
         errorCount++;
       }
-      
+
       // Schedule next poll if still mounted and not complete/failed
       if (isMounted && status !== "completed" && status !== "failed") {
         // Use exponential backoff for errors (max 30 seconds)
@@ -87,10 +87,10 @@ export function AudiobookProgress({
         setTimeout(fetchProgress, delay);
       }
     };
-    
+
     // Start polling
     fetchProgress();
-    
+
     // Cleanup function
     return () => {
       isMounted = false;
@@ -128,7 +128,9 @@ export function AudiobookProgress({
 
   // Determine label text based on status and progress
   let statusLabel = "";
-  switch (status) {
+  // Treat 'success' as 'processing' for label purposes
+  const normalizedStatus = status === "success" ? "processing" : status;
+  switch (normalizedStatus) {
     case "pending":
       statusLabel = "Pending";
       break;

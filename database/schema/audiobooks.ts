@@ -29,6 +29,7 @@ export const audiobooks = pgTable("audiobooks", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   processingStatus: text("processing_status").notNull().default("pending"), // pending, processing, completed, failed
+  progress: integer("progress").notNull().default(0), // Progress percentage (0-100)
   pdfId: uuid("pdf_id")
     .notNull()
     .references(() => pdfs.id, { onDelete: "cascade" }),
