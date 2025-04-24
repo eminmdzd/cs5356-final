@@ -5,6 +5,8 @@ import { and, eq } from 'drizzle-orm';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
+import { PDFExtract } from 'pdf.js-extract';
 import pdfParse from 'pdf-parse';
 // Import Vercel Blob conditionally
 let vercelBlob: any = { get: null, put: null, del: null };
@@ -18,6 +20,9 @@ try {
   console.warn('Worker: Vercel Blob not available, using local filesystem for storage');
 }
 import * as https from 'https';
+
+// Initialize PDF extractor
+const pdfExtract = new PDFExtract();
 
 // Determine if we're in production
 const isProduction = process.env.NODE_ENV === 'production';
@@ -116,7 +121,61 @@ async function fetchFromUrl(url: string): Promise<Buffer> {
   });
 }
 
-// Function to extract text from a PDF file
+// Function to extract text from PDF using pdf.js-extract (faster parallel extraction)
+async function extractTextWithPdfJsExtract(dataBuffer: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const pdfData = new Uint8Array(dataBuffer);
+    
+    pdfExtract.extractBuffer(pdfData, {})
+      .then(data => {
+        // Process pages in parallel with Promise.all
+        const textPromises = data.pages.map(page => {
+          return new Promise<string>((resolveText) => {
+            let pageText = '';
+            // Combine all content items into text
+            if (page.content && page.content.length > 0) {
+              // Group items by y-position for proper line handling
+              const lineMap = new Map<number, Array<{x: number, str: string}>>();
+              
+              page.content.forEach(item => {
+                // Round to nearest 0.5 to group lines together
+                const yPos = Math.round(item.y * 2) / 2;
+                if (!lineMap.has(yPos)) {
+                  lineMap.set(yPos, []);
+                }
+                lineMap.get(yPos)!.push({x: item.x, str: item.str});
+              });
+              
+              // Sort lines by y-position (top to bottom)
+              const sortedLines = Array.from(lineMap.entries())
+                .sort((a, b) => a[0] - b[0]);
+              
+              // For each line, sort items by x-position (left to right)
+              sortedLines.forEach(([_, items]) => {
+                items.sort((a, b) => a.x - b.x);
+                pageText += items.map(item => item.str).join(' ') + '\n';
+              });
+            }
+            resolveText(pageText);
+          });
+        });
+        
+        // Combine all page texts
+        Promise.all(textPromises)
+          .then(texts => {
+            const fullText = texts.join('\n\n');
+            resolve(fullText);
+          })
+          .catch(err => reject(err));
+      })
+      .catch(err => {
+        console.error('Error in PDF.js extraction:', err);
+        reject(err);
+      });
+  });
+}
+
+// Function to extract text from a PDF file using multiple methods in parallel for speed
 async function extractTextFromPDF(filePath: string, originalPath?: string | null): Promise<string> {
   try {
     let dataBuffer: Buffer;
@@ -228,13 +287,41 @@ async function extractTextFromPDF(filePath: string, originalPath?: string | null
 
     console.log("Worker: Successfully read PDF file, size:", dataBuffer.length);
 
+    // Use parallelization to extract text - try multiple methods simultaneously
+    // This significantly speeds up text extraction, especially for large PDFs
     try {
-      const data = await pdfParse(dataBuffer);
-      console.log("Worker: Successfully parsed PDF, text length:", data.text.length);
-      return data.text;
+      console.log("Worker: Starting parallel PDF text extraction");
+      
+      // Start both methods in parallel
+      const [pdfJsExtractPromise, pdfParsePromise] = await Promise.allSettled([
+        extractTextWithPdfJsExtract(dataBuffer),
+        pdfParse(dataBuffer).then(data => data.text)
+      ]);
+      
+      // Check which method succeeded and use its result
+      if (pdfJsExtractPromise.status === 'fulfilled' && pdfJsExtractPromise.value) {
+        console.log("Worker: Successfully extracted text using PDF.js-extract");
+        return pdfJsExtractPromise.value;
+      } else if (pdfParsePromise.status === 'fulfilled') {
+        console.log("Worker: Successfully extracted text using pdf-parse");
+        return pdfParsePromise.value;
+      }
+      
+      // If pdf.js-extract failed but pdf-parse succeeded
+      if (pdfParsePromise.status === 'fulfilled') {
+        return pdfParsePromise.value;
+      }
+      
+      // If both failed, throw error
+      throw new Error("Both PDF extraction methods failed");
+      
     } catch (parseError) {
-      console.error("Worker: Error parsing PDF content:", parseError);
-      throw parseError;
+      console.error("Worker: Error in parallel PDF extraction, falling back to pdf-parse:", parseError);
+      
+      // Fallback to original method if parallel extraction fails
+      const data = await pdfParse(dataBuffer);
+      console.log("Worker: Successfully parsed PDF using fallback method, text length:", data.text.length);
+      return data.text;
     }
   } catch (error: any) {
     console.error("Worker: Error extracting text from PDF:", error);

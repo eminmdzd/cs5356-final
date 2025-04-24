@@ -11,9 +11,10 @@
 
 - Long PDFs error out with: Error generating audio with Google TTS for audiobook
 - Finalizing... on regenerate
-- switch to short polling
 - bug where status changes after completion of generation
 - sometimes the times do not match
+- created ones fail if others fail
+
 
 
 ***Minor nitpicks***
