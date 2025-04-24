@@ -35,10 +35,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Get the latest progress from Redis
   const progress = await getJobProgress(id);
-  
+
   // Handle case where DB status is processing but progress is 0
   let progressToSend = progress;
-  
+
   if (audiobook.processingStatus === 'processing' && progress === 0) {
     console.log(`Progress API: Audiobook ${id} status is processing but progress is 0, setting to 5%`);
     progressToSend = 5;

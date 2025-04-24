@@ -5,9 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as os from 'os';
 import { PDFExtract } from 'pdf.js-extract';
-import pdfParse from 'pdf-parse';
 // Import Vercel Blob conditionally
 let vercelBlob: any = { get: null, put: null, del: null };
 try {
@@ -20,6 +18,7 @@ try {
   console.warn('Worker: Vercel Blob not available, using local filesystem for storage');
 }
 import * as https from 'https';
+import { Job } from 'bull';
 
 // Initialize PDF extractor
 const pdfExtract = new PDFExtract();
@@ -31,16 +30,14 @@ const isProduction = process.env.NODE_ENV === 'production';
 let ttsClient: TextToSpeechClient;
 
 try {
-  const isProduction = process.env.NODE_ENV === 'production';
-  
   console.log(`Worker: Initializing Google TTS client in ${isProduction ? 'production' : 'development'} mode`);
-  
+
   if (isProduction) {
     // In production, directly use credentials from environment variables
-    if (process.env.GOOGLE_PROJECT_ID && 
-        process.env.GOOGLE_PRIVATE_KEY && 
+    if (process.env.GOOGLE_PROJECT_ID &&
+        process.env.GOOGLE_PRIVATE_KEY &&
         process.env.GOOGLE_CLIENT_EMAIL) {
-      
+
       // Create credentials object directly from environment variables
       const credentials = {
         projectId: process.env.GOOGLE_PROJECT_ID,
@@ -49,32 +46,32 @@ try {
           private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
         }
       };
-      
+
       console.log(`Worker: Using Google credentials directly from environment variables`);
       ttsClient = new TextToSpeechClient(credentials);
-    } 
+    }
     // Fall back to credentials file if available
     else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
       console.log(`Worker: Falling back to credentials file: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
       ttsClient = new TextToSpeechClient({
         keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
       });
-    } 
+    }
     else {
       throw new Error("Worker: No Google credentials found in production environment");
     }
-  } 
+  }
   // Development mode - use credentials file
   else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     console.log(`Worker: Using credentials file from GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
     ttsClient = new TextToSpeechClient({
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
     });
-  } 
+  }
   else {
     throw new Error("Worker: No Google credentials found. In development, set GOOGLE_APPLICATION_CREDENTIALS environment variable.")
   }
-  
+
   console.log("Worker: Google TTS client initialized successfully");
 } catch (error) {
   console.error("Worker: Failed to initialize Google TTS client:", error);
@@ -107,7 +104,7 @@ async function fetchFromUrl(url: string): Promise<Buffer> {
           return;
         }
       }
-      
+
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to fetch URL: ${response.statusCode}`));
         return;
@@ -125,7 +122,7 @@ async function fetchFromUrl(url: string): Promise<Buffer> {
 async function extractTextWithPdfJsExtract(dataBuffer: Buffer): Promise<string> {
   return new Promise((resolve, reject) => {
     const pdfData = new Uint8Array(dataBuffer);
-    
+
     pdfExtract.extractBuffer(pdfData, {})
       .then(data => {
         // Process pages in parallel with Promise.all
@@ -136,7 +133,7 @@ async function extractTextWithPdfJsExtract(dataBuffer: Buffer): Promise<string> 
             if (page.content && page.content.length > 0) {
               // Group items by y-position for proper line handling
               const lineMap = new Map<number, Array<{x: number, str: string}>>();
-              
+
               page.content.forEach(item => {
                 // Round to nearest 0.5 to group lines together
                 const yPos = Math.round(item.y * 2) / 2;
@@ -145,11 +142,11 @@ async function extractTextWithPdfJsExtract(dataBuffer: Buffer): Promise<string> 
                 }
                 lineMap.get(yPos)!.push({x: item.x, str: item.str});
               });
-              
+
               // Sort lines by y-position (top to bottom)
               const sortedLines = Array.from(lineMap.entries())
                 .sort((a, b) => a[0] - b[0]);
-              
+
               // For each line, sort items by x-position (left to right)
               sortedLines.forEach(([_, items]) => {
                 items.sort((a, b) => a.x - b.x);
@@ -159,7 +156,7 @@ async function extractTextWithPdfJsExtract(dataBuffer: Buffer): Promise<string> 
             resolveText(pageText);
           });
         });
-        
+
         // Combine all page texts
         Promise.all(textPromises)
           .then(texts => {
@@ -219,7 +216,7 @@ async function extractTextFromPDF(filePath: string, originalPath?: string | null
     } else {
       // Local file system logic for development
       console.log(`Worker: Using local file system for PDF extraction`);
-      
+
       // List the directories to help with debugging
       try {
         const publicDir = path.join(process.cwd(), "public");
@@ -287,41 +284,17 @@ async function extractTextFromPDF(filePath: string, originalPath?: string | null
 
     console.log("Worker: Successfully read PDF file, size:", dataBuffer.length);
 
-    // Use parallelization to extract text - try multiple methods simultaneously
-    // This significantly speeds up text extraction, especially for large PDFs
     try {
       console.log("Worker: Starting parallel PDF text extraction");
-      
-      // Start both methods in parallel
-      const [pdfJsExtractPromise, pdfParsePromise] = await Promise.allSettled([
-        extractTextWithPdfJsExtract(dataBuffer),
-        pdfParse(dataBuffer).then(data => data.text)
-      ]);
-      
-      // Check which method succeeded and use its result
-      if (pdfJsExtractPromise.status === 'fulfilled' && pdfJsExtractPromise.value) {
-        console.log("Worker: Successfully extracted text using PDF.js-extract");
-        return pdfJsExtractPromise.value;
-      } else if (pdfParsePromise.status === 'fulfilled') {
-        console.log("Worker: Successfully extracted text using pdf-parse");
-        return pdfParsePromise.value;
-      }
-      
-      // If pdf.js-extract failed but pdf-parse succeeded
-      if (pdfParsePromise.status === 'fulfilled') {
-        return pdfParsePromise.value;
-      }
-      
-      // If both failed, throw error
-      throw new Error("Both PDF extraction methods failed");
-      
-    } catch (parseError) {
-      console.error("Worker: Error in parallel PDF extraction, falling back to pdf-parse:", parseError);
-      
+
+      const text = await extractTextWithPdfJsExtract(dataBuffer)
+      return text;
+
+    } catch (extractError: any) {
+      console.error("Worker: Error in parallel PDF extraction, falling back to pdf-parse:", extractError);
+
       // Fallback to original method if parallel extraction fails
-      const data = await pdfParse(dataBuffer);
-      console.log("Worker: Successfully parsed PDF using fallback method, text length:", data.text.length);
-      return data.text;
+      throw new Error(`Failed to extract text from PDF: ${extractError.message}`);
     }
   } catch (error: any) {
     console.error("Worker: Error extracting text from PDF:", error);
@@ -394,7 +367,7 @@ async function generateAudioWithGoogleTTS(
   text: string,
   outputFileName: string,
   audiobookId: string,
-  job: any
+  job: Job
 ): Promise<string> {
   try {
     // Split text into chunks of approximately 5000 bytes
@@ -406,65 +379,105 @@ async function generateAudioWithGoogleTTS(
     await setJobProgress(audiobookId, 20);
     console.log(`Worker: Updated progress for ${audiobookId} to 20%`);
 
-    // Generate audio for each chunk
-    const audioChunks: Buffer[] = [];
+    // Generate audio for each chunk in parallel
+    // Check for cancellation before dispatching requests
+    if (await checkIfCancelled(audiobookId)) {
+      console.log(`Worker: Audiobook ${audiobookId} was cancelled before starting parallel audio generation`);
+      throw new Error('Processing was cancelled by the user');
+    }
 
-    for (let i = 0; i < chunks.length; i++) {
-      // Check for cancellation
-      if (await checkIfCancelled(audiobookId)) {
-        console.log(`Worker: Audiobook ${audiobookId} was cancelled during audio generation`);
-        throw new Error('Processing was cancelled by the user');
-      }
+    // Helper to process chunks with limited concurrency
+    async function processChunksWithLimit<T>(inputs: T[], limit: number, processFn: (input: T, i: number) => Promise<any>) {
+      const results: any[] = new Array(inputs.length);
+      let inFlight = 0;
+      let current = 0;
+      let completed = 0;
+      return new Promise<any[]>((resolve, reject) => {
+        const launchNext = () => {
+          while (inFlight < limit && current < inputs.length) {
+            const idx = current;
+            inFlight++;
+            current++;
+            processFn(inputs[idx], idx)
+              .then((result) => {
+                results[idx] = result;
+                completed++;
+                // Progress: scale from 20% to 85%
+                const progress = Math.floor(20 + (completed / inputs.length) * 65);
+                job.progress(progress).catch(() => {});
+                setJobProgress(audiobookId, progress).catch(() => {});
+                launchNext();
+              })
+              .catch((err) => reject(err))
+              .finally(() => {
+                inFlight--;
+              });
+          }
+          if (completed === inputs.length) {
+            resolve(results);
+          }
+        };
+        launchNext();
+      });
+    }
 
-      // Calculate and update progress - scale from 20% to 90% based on chunk processing
-      const progress = Math.floor(20 + (i / chunks.length * 70));
-      await job.progress(progress);
-      await setJobProgress(audiobookId, progress);
-      console.log(`Worker: Processing chunk ${i + 1}/${chunks.length}, progress: ${progress}% for audiobook ${audiobookId}`);
-
-      // Prepare the synthesis input
-      const synthesisInput = {
-        text: chunks[i],
-      };
-
-      // Configure the voice parameters
+    // Define the TTS chunk processing function
+    async function processChunk(chunk: string, i: number) {
+      const synthesisInput = { text: chunk };
       const voice = {
         languageCode: "en-US",
         name: "en-US-Neural2-D",
       };
-
-      // Configure the audio parameters
       const audioConfig = {
         audioEncoding: "MP3" as const,
         effectsProfileId: ["small-bluetooth-speaker-class-device"],
         pitch: 0.0,
         speakingRate: 1.0,
       };
-
       try {
-        // Make the request to generate audio
         const [response] = await ttsClient.synthesizeSpeech({
           input: synthesisInput,
           voice,
           audioConfig,
         });
-
         if (!response.audioContent) {
           throw new Error(`No audio content received for chunk ${i + 1}`);
         }
-
-        // Convert the audio content to Buffer
         const audioBuffer = typeof response.audioContent === 'string'
           ? Buffer.from(response.audioContent, 'base64')
           : Buffer.from(response.audioContent);
-
-        audioChunks.push(audioBuffer);
         console.log(`Worker: Successfully generated audio for chunk ${i + 1}/${chunks.length} for audiobook ${audiobookId}`);
+        return { index: i, buffer: audioBuffer };
       } catch (ttsError) {
         console.error(`Worker: Error generating audio for chunk ${i + 1}:`, ttsError);
         throw ttsError;
       }
     }
+
+    // Await all chunk requests with concurrency limit 5
+    let audioChunks: Buffer[] = [];
+    try {
+      const chunkResults = await processChunksWithLimit(chunks, 5, processChunk);
+      // Sort results by original chunk order (should already be in order)
+      chunkResults.sort((a, b) => a.index - b.index);
+      audioChunks = chunkResults.map(res => res.buffer);
+    } catch (error) {
+      console.error(`Worker: Error in limited-concurrency TTS generation:`, error);
+      throw error;
+    }
+
+    // Check for cancellation after all requests
+    if (await checkIfCancelled(audiobookId)) {
+      console.log(`Worker: Audiobook ${audiobookId} was cancelled after parallel audio generation`);
+      throw new Error('Processing was cancelled by the user');
+    }
+
+    // Update progress to 85% after TTS (since 90% is after writing the file)
+    await job.progress(85);
+    await setJobProgress(audiobookId, 85);
+    console.log(`Worker: Updated progress for ${audiobookId} to 85% after TTS generation`);
+
+
 
     // Concatenate all audio chunks
     const concatenatedAudio = Buffer.concat(audioChunks);
@@ -473,7 +486,7 @@ async function generateAudioWithGoogleTTS(
     // Save the final audio file
     let audioPath: string;
     let mp3Buffer = concatenatedAudio;
-    
+
     if (isProduction && process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.put) {
       try {
         // Use Vercel Blob Storage in production
@@ -482,7 +495,7 @@ async function generateAudioWithGoogleTTS(
           access: 'public',
           contentType: 'audio/mpeg',
         });
-        
+
         audioPath = blob.url;
         console.log(`Worker: Uploaded audio file to Blob Storage: ${audioPath} for audiobook ${audiobookId}`);
       } catch (error) {
@@ -490,7 +503,7 @@ async function generateAudioWithGoogleTTS(
         // Fall back to local filesystem
         const outputDir = path.join(process.cwd(), "public/audio");
         await fs.mkdir(outputDir, { recursive: true });
-        
+
         audioPath = `/audio/${outputFileName}.mp3`;
         const localAudioPath = path.join(outputDir, `${outputFileName}.mp3`);
         await fs.writeFile(localAudioPath, concatenatedAudio);
@@ -500,7 +513,7 @@ async function generateAudioWithGoogleTTS(
       // Use local filesystem in development
       const outputDir = path.join(process.cwd(), "public/audio");
       await fs.mkdir(outputDir, { recursive: true });
-      
+
       audioPath = `/audio/${outputFileName}.mp3`;
       const localAudioPath = path.join(outputDir, `${outputFileName}.mp3`);
       await fs.writeFile(localAudioPath, concatenatedAudio);
@@ -523,44 +536,44 @@ async function generateAudioWithGoogleTTS(
 // Function to get audio duration
 async function getAudioDuration(audioPath: string, audiobookId: string, text: string): Promise<number> {
   console.log(`Worker: Getting audio duration for ${audioPath}`);
-  
+
   // Get approximate duration - estimate 150 words per minute
   const wordCount = text.split(/\s+/).length;
   const estimatedDuration = Math.ceil(wordCount / 150 * 60); // Duration in seconds
   console.log(`Worker: Estimated duration: ${estimatedDuration} seconds (${wordCount} words) for audiobook ${audiobookId}`);
-  
+
   try {
     let actualDuration = estimatedDuration; // Fallback to estimated duration
-    
+
     if (isProduction && (audioPath.startsWith('http://') || audioPath.startsWith('https://'))) {
       // For Blob Storage URLs, we can only estimate duration in production
       console.log(`Worker: Using estimated duration for Blob Storage: ${estimatedDuration} seconds`);
       return estimatedDuration;
     } else {
       // In development, try to get more accurate duration from MP3 file
-      const audioFilePath = audioPath.startsWith('/') 
+      const audioFilePath = audioPath.startsWith('/')
         ? path.join(process.cwd(), "public", audioPath.slice(1))
         : path.join(process.cwd(), "public", audioPath);
-        
+
       // Get the total file size
       const stats = await fs.stat(audioFilePath);
       const fileSize = stats.size; // in bytes
-      
+
       // Read first 100 bytes to analyze MP3 header
       const fd = await fs.open(audioFilePath, 'r');
       const buffer = Buffer.alloc(100);
       await fd.read(buffer, 0, 100, 0);
       await fd.close();
-      
+
       // Check for MP3 header (starts with ID3 or with 0xFF 0xFB)
       let bitRate = 0;
       if (buffer.slice(0, 3).toString() === 'ID3') {
         // ID3v2 tag found, now try to find the audio frame
         // Skip the ID3 header which is 10 bytes + extended header size
         const headerSize = 10;
-        const extendedSize = buffer[6] & 0x80 ? 
+        const extendedSize = buffer[6] & 0x80 ?
           ((buffer[10] & 0x7f) << 21) | ((buffer[11] & 0x7f) << 14) | ((buffer[12] & 0x7f) << 7) | (buffer[13] & 0x7f) : 0;
-        
+
         // Assuming 128kbps for most Google TTS MP3s
         bitRate = 128 * 1000;
       } else if ((buffer[0] === 0xFF) && ((buffer[1] & 0xE0) === 0xE0)) {
@@ -573,7 +586,7 @@ async function getAudioDuration(audioPath: string, audiobookId: string, text: st
         // If we can't identify the header, use a reasonable default
         bitRate = 128 * 1000; // Assume 128kbps for Google TTS
       }
-      
+
       if (bitRate > 0) {
         // Calculate duration: fileSize (bytes) / (bitRate (bits/sec) / 8 bits per byte)
         // We need to account for file headers, so this is approximate
@@ -584,7 +597,7 @@ async function getAudioDuration(audioPath: string, audiobookId: string, text: st
       } else {
         console.log(`Worker: Could not determine bitrate, using estimated duration: ${estimatedDuration} seconds for audiobook ${audiobookId}`);
       }
-      
+
       return actualDuration;
     }
   } catch (error) {
@@ -676,7 +689,7 @@ audiobookQueue.process(async (job: any) => {
       .set({
         processingStatus: "completed",
         audioPath: audioPath,
-        duration: actualDuration 
+        duration: actualDuration
       })
       .where(
         and(

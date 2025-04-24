@@ -11,11 +11,11 @@ let client: Redis;
 if (isProduction && process.env.REDIS_URL) {
   // Use Upstash Redis in production
   console.log('Queue: Using Upstash Redis configuration');
-  
+
   // Upstash Redis connection URL format
   const redisUrl = process.env.REDIS_URL;
   client = new Redis(redisUrl);
-  
+
   // Configure Redis for Bull
   redisConfig = {
     port: client.options.port || 6379,
@@ -25,7 +25,7 @@ if (isProduction && process.env.REDIS_URL) {
       rejectUnauthorized: false, // Required for Upstash Redis connections over TLS
     }
   };
-  
+
   // Also support KV REST API if available
   if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
     console.log('Queue: Upstash KV REST API also available');
@@ -34,7 +34,7 @@ if (isProduction && process.env.REDIS_URL) {
   // Use local Redis in development
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   client = new Redis(redisUrl);
-  
+
   // Configure Redis for Bull
   redisConfig = {
     port: client.options.port || 6379,
@@ -56,17 +56,22 @@ export const audiobookQueue = new Queue('audiobook-processing', {
     attempts: 3,
     backoff: {
       type: 'exponential',
-      delay: 10000, // 10 seconds initial delay
+      delay: 10000,
     },
     removeOnComplete: true, // Clean up completed jobs
     removeOnFail: false, // Keep failed jobs for debugging
+  },
+  settings: {
+    stalledInterval: 300000, // How often check for stalled jobs
+    guardInterval: 5000, // Poll interval for delayed jobs and added jobs
+    drainDelay: 300000, // A timeout for when the queue is in drained state
   }
 });
 
 // Auto-initialize worker in the same process
 // This is important for Next.js development mode where we don't have separate worker processes
 // In production, we'll use Bull's built-in scheduled job processing
-if (typeof window === 'undefined') { 
+if (typeof window === 'undefined') {
   console.log('Queue: Auto-initializing worker process');
 
   // Import worker dynamically to prevent circular dependencies
@@ -155,13 +160,8 @@ export async function setJobProgress(audiobookId: string, progress: number): Pro
     }
   } catch (error) {
     console.error(`Error setting progress for audiobook ${audiobookId}:`, error);
-    // Fallback to in-memory tracking if Redis fails
-    jobProgressFallback.set(audiobookId, progress);
   }
 }
-
-// Fallback in-memory tracker if Redis fails
-const jobProgressFallback = new Map<string, number>();
 
 // Method to get job progress from Redis
 export async function getJobProgress(audiobookId: string): Promise<number> {
@@ -172,23 +172,6 @@ export async function getJobProgress(audiobookId: string): Promise<number> {
     return progress;
   } catch (error) {
     console.error(`Error getting progress for audiobook ${audiobookId}:`, error);
-    // Fallback to in-memory tracking if Redis fails
-    const fallbackProgress = jobProgressFallback.get(audiobookId) || 0;
-    console.log(`Fallback progress for audiobook ${audiobookId}: ${fallbackProgress}%`);
-    return fallbackProgress;
-  }
-}
-
-// Legacy synchronous version for backward compatibility
-// This is used in places where we can't easily make async calls
-export function getJobProgressSync(audiobookId: string): number {
-  try {
-    // Try to get from fallback map first
-    const progress = jobProgressFallback.get(audiobookId) || 0;
-    console.log(`Retrieving sync progress for audiobook ${audiobookId}: ${progress}%`);
-    return progress;
-  } catch (error) {
-    console.error(`Error in getJobProgressSync for ${audiobookId}:`, error);
-    return 0;
+    throw error;
   }
 }
