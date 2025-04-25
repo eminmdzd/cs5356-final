@@ -124,6 +124,14 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
   return (
     <div className="border rounded-lg overflow-hidden bg-card flex flex-col relative">
       {!isEditing && (<div className="absolute top-2 right-2 flex gap-1">
+        <Button 
+          size="icon" 
+          variant="ghost" 
+          className="h-8 w-8 text-muted-foreground hover:text-primary"
+          onClick={() => setIsEditing(true)}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
         {audiobook.processingStatus !== "completed" && (
           <form 
             action={async () => {
@@ -183,19 +191,12 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
             </Button>
           </div>
         ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div 
-                className="flex items-center gap-2 cursor-pointer group"
-                onClick={() => setIsEditing(true)}
-              >
-                <h3 className="text-xl font-medium truncate pr-16">{audiobook.title}</h3>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Click to edit title</p>
-            </TooltipContent>
-          </Tooltip>
+          <div 
+            className="cursor-pointer"
+            onClick={() => setIsEditing(true)}
+          >
+            <h3 className="text-xl font-medium truncate pr-16">{audiobook.title}</h3>
+          </div>
         )}
         <p className="text-muted-foreground text-sm truncate mb-2">
           {audiobook.pdf.fileName}

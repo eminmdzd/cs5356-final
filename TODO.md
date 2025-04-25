@@ -9,8 +9,7 @@
 - Preprocess documents with an LLM to "clean" it for TTS.
 
 **_Issues_**
-- painstakingly slow in production
-- stuck on finalizing after completion
+- slow, pruning paper from hardware took 3-4 mins but better
 
 ***Won't fix***
 - Extract PDF text on client since there are Next server action body size limits
@@ -19,6 +18,5 @@
 
 
 ***Minor nitpicks***
-- the update title pencil is gone and not quite clear ui on how to do it
-- eye icon on sign up page looks weird.. almost as if there are two eye icons on top of each other
+- eye icon on sign up page looks weird almost as if there are two eye icons on top of each other
 - disable regenerate button when in progress

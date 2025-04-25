@@ -28,10 +28,14 @@ export function AudiobookProgress({
     let lastProgress = 0; // Track the last progress value we've seen
     let errorCount = 0; // Track consecutive errors for backoff
 
+    // Add counter for stuck on 100% detection
+    let stuckAt100Count = 0;
+    
     // Function to fetch progress
     const fetchProgress = async () => {
       try {
-        const response = await fetch(`/api/audiobook-progress/${audiobookId}`);
+        // Add cache-busting parameter to prevent browser caching
+        const response = await fetch(`/api/audiobook-progress/${audiobookId}?_=${Date.now()}`);
 
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
@@ -39,6 +43,26 @@ export function AudiobookProgress({
 
         const data = await response.json();
         const newProgress = data.progress || 0;
+        
+        // Detect when stuck at 100% in processing state
+        if (newProgress === 100 && data.status === "processing") {
+          stuckAt100Count++;
+          console.log(`Detected 100% progress but still processing (count: ${stuckAt100Count})`);
+          
+          // After 3 consecutive detections of being stuck at 100%, force a refresh
+          if (stuckAt100Count >= 3) {
+            console.log("Audiobook seems to be completed but UI is stuck, forcing refresh");
+            
+            // Force reload the page to get the latest status
+            if (window.location.pathname.includes(`/audiobooks/${audiobookId}`)) {
+              window.location.reload();
+            } else {
+              router.refresh();
+            }
+          }
+        } else {
+          stuckAt100Count = 0; // Reset counter if anything changes
+        }
 
         // Only update if component is still mounted
         if (!isMounted) return;
@@ -53,16 +77,28 @@ export function AudiobookProgress({
           errorCount = 0;
 
           // If processing is complete and the toast notification is enabled
-          if (data.status === "completed" && showCompleteMessage && !hasShownNotification) {
-            setHasShownNotification(true);
-            toast.success("Audiobook generation complete!", {
-              action: {
-                label: "View Audiobook",
-                onClick: () => router.push(`/audiobooks/${audiobookId}`),
-              },
-            });
-            // Trigger revalidation to update the UI
+          if (data.status === "completed") {
+            if (showCompleteMessage && !hasShownNotification) {
+              setHasShownNotification(true);
+              toast.success("Audiobook generation complete!", {
+                action: {
+                  label: "View Audiobook",
+                  onClick: () => router.push(`/audiobooks/${audiobookId}`),
+                },
+              });
+            }
+            
+            // Always trigger revalidation to update the UI when completed
+            // This helps fix the "stuck on finalizing" issue
             router.refresh();
+            
+            // Force a reload of the page if we're already on the audiobook detail page
+            // to prevent "stuck on finalizing" issue
+            if (window.location.pathname.includes(`/audiobooks/${audiobookId}`)) {
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            }
           }
 
           // If processing failed
