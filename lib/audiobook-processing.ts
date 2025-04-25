@@ -5,6 +5,9 @@ import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { PDFExtract } from 'pdf.js-extract';
+import { GlobalWorkerOptions } from 'pdfjs-dist';
+
+GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
 // Add any other imports needed from the old worker
 
