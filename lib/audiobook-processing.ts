@@ -72,7 +72,7 @@ export async function processAudiobookJob({
 
     // 2. Split text into smaller chunks for production
     // Use smaller chunks in production to prevent timeouts
-    const maxChunkSize = isProduction ? 2000 : 5000;
+    const maxChunkSize = isProduction ? 3000 : 5000;
     console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
     const chunks = splitTextIntoChunks(text, maxChunkSize);
     await db.update(audiobooks).set({ progress: 40 }).where(eq(audiobooks.id, audiobookId));
@@ -80,7 +80,7 @@ export async function processAudiobookJob({
     // 3. Generate audio for each chunk (reduced concurrency in production)
     const audioBuffers: Buffer[] = new Array(chunks.length);
     // Use lower concurrency in production to prevent TTS API overwhelm
-    const concurrency = isProduction ? 1 : 5;
+    const concurrency = isProduction ? 3 : 5;
     console.log(`Using concurrency of ${concurrency} for TTS API calls`);
     let completed = 0;
     async function synthesizeChunk(i: number) {
@@ -129,14 +129,45 @@ export async function processAudiobookJob({
       await Promise.all(batch);
     }
 
-    // 4. Concatenate and save audio
+    // 4. Concatenate audio and save to appropriate storage
     const concatenatedAudio = Buffer.concat(audioBuffers);
-    const outputDir = path.join(process.cwd(), 'public/audio');
-    await fs.mkdir(outputDir, { recursive: true });
     const audioFileName = `${audiobookId}.mp3`;
-    const audioPath = `/audio/${audioFileName}`;
-    const localAudioPath = path.join(outputDir, audioFileName);
-    await fs.writeFile(localAudioPath, concatenatedAudio);
+    let audioPath = `/audio/${audioFileName}`;
+    
+    // In production, use Vercel Blob Storage
+    if (isProduction) {
+      try {
+        // Dynamic import of Vercel Blob
+        const { put } = await import('@vercel/blob');
+        
+        // Check if we have the necessary token
+        if (!process.env.BLOB_READ_WRITE_TOKEN) {
+          throw new Error("Missing BLOB_READ_WRITE_TOKEN in production environment");
+        }
+        
+        // Create a File object from the buffer
+        const file = new File([concatenatedAudio], audioFileName, { type: 'audio/mpeg' });
+        
+        // Upload to Vercel Blob Storage
+        const blob = await put(audioFileName, file, {
+          access: 'public',
+        });
+        
+        // Update the path to the Blob URL
+        audioPath = blob.url;
+        console.log(`Audiobook saved to Blob Storage: ${audioPath}`);
+      } catch (error) {
+        console.error("Failed to save audiobook to Blob Storage:", error);
+        throw new Error(`Unable to save audiobook in production: ${error.message}`);
+      }
+    } else {
+      // In development, use local filesystem
+      const outputDir = path.join(process.cwd(), 'public/audio');
+      await fs.mkdir(outputDir, { recursive: true });
+      const localAudioPath = path.join(outputDir, audioFileName);
+      await fs.writeFile(localAudioPath, concatenatedAudio);
+      console.log(`Audiobook saved locally: ${localAudioPath}`);
+    }
     await db.update(audiobooks).set({ progress: 100, processingStatus: 'completed', audioPath }).where(eq(audiobooks.id, audiobookId));
   } catch (error: any) {
     await db.update(audiobooks).set({ processingStatus: 'failed', errorDetails: error.message }).where(eq(audiobooks.id, audiobookId));

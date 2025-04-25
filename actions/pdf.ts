@@ -65,30 +65,20 @@ export async function uploadPdf(formData: FormData) {
     // Get file buffer
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    if (isProduction && process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.put) {
-      try {
-        // Use Vercel Blob Storage in production
-        const blob = await vercelBlob.put(fileName, file, {
-          access: 'public',
-        });
-        
-        filePath = blob.url;
-        console.log(`File uploaded to Blob Storage: ${filePath}`);
-      } catch (error) {
-        console.error("Error uploading to Blob Storage, falling back to local:", error);
-        // Fall back to local storage
-        const uploadDir = path.resolve("public/uploads");
-        filePath = `/uploads/${fileName}`;
-        const fullPath = path.join(uploadDir, fileName);
-        originalPath = fullPath; // Store local path for development environment
-        
-        // Ensure upload directory exists
-        await mkdir(uploadDir, { recursive: true });
-        
-        // Save to local filesystem
-        await writeFile(fullPath, buffer);
-        console.log(`File saved locally: ${fullPath}`);
+    if (isProduction) {
+      // In production, we MUST use Vercel Blob Storage, no fallbacks
+      if (!process.env.BLOB_READ_WRITE_TOKEN || !vercelBlob.put) {
+        console.error("Missing Vercel Blob configuration in production");
+        throw new Error("Storage configuration error: Missing Blob Storage token");
       }
+      
+      // Use Vercel Blob Storage in production
+      const blob = await vercelBlob.put(fileName, file, {
+        access: 'public',
+      });
+      
+      filePath = blob.url;
+      console.log(`File uploaded to Blob Storage: ${filePath}`);
     } else {
       // Use local filesystem in development
       const uploadDir = path.resolve("public/uploads");

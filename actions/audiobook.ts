@@ -288,17 +288,23 @@ export async function deleteAudiobook(formData: FormData) {
     // If there's an audio file, delete it
     if (audiobook.audioPath) {
       try {
-        if (isProduction && process.env.BLOB_READ_WRITE_TOKEN && vercelBlob.del &&
-            (audiobook.audioPath.startsWith('http://') || audiobook.audioPath.startsWith('https://'))) {
-          try {
-            // Delete from Vercel Blob Storage
-            await vercelBlob.del(audiobook.audioPath);
-            console.log(`Deleted audiobook file from Blob Storage: ${audiobook.audioPath}`);
-          } catch (error) {
-            console.error(`Error deleting file from Blob Storage: ${audiobook.audioPath}`, error);
+        if (isProduction) {
+          if (audiobook.audioPath.startsWith('http://') || audiobook.audioPath.startsWith('https://')) {
+            // In production, we should always try to delete from Blob Storage
+            if (!process.env.BLOB_READ_WRITE_TOKEN || !vercelBlob.del) {
+              console.error("Missing Vercel Blob configuration for deletion in production");
+              // Continue anyway, as this is just cleanup
+            } else {
+              try {
+                await vercelBlob.del(audiobook.audioPath);
+                console.log(`Deleted audiobook file from Blob Storage: ${audiobook.audioPath}`);
+              } catch (error) {
+                console.error(`Error deleting file from Blob Storage: ${audiobook.audioPath}`, error);
+              }
+            }
           }
         } else {
-          // Delete from local filesystem
+          // Only attempt filesystem operations in development
           const filePath = path.join(process.cwd(), "public", audiobook.audioPath);
           await fs.unlink(filePath);
           console.log(`Deleted audiobook file from local filesystem: ${filePath}`);
