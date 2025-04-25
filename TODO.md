@@ -9,7 +9,7 @@
 - Preprocess documents with an LLM to "clean" it for TTS.
 
 **_Issues_**
-- slow, pruning paper from hardware took 3-4 mins but better
+- slow, pruning paper from hardware for example took 3-4 mins but better
 
 ***Won't fix***
 - Extract PDF text on client since there are Next server action body size limits

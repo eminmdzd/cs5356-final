@@ -5,6 +5,7 @@ import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
+import mp3Duration from 'mp3-duration';
 const isProduction = process.env.NODE_ENV === 'production';
 
 async function extractTextWithPdfParse(dataBuffer: Buffer): Promise<string> {
@@ -213,6 +214,7 @@ export async function processAudiobookJob({
     const concatenatedAudio = Buffer.concat(audioBuffers);
     const audioFileName = `${audiobookId}.mp3`;
     let audioPath = `/audio/${audioFileName}`;
+    let audioDuration = 0;
     
     // In production, use Vercel Blob Storage
     if (isProduction) {
@@ -227,6 +229,31 @@ export async function processAudiobookJob({
         
         // Create a File object from the buffer
         const file = new File([concatenatedAudio], audioFileName, { type: 'audio/mpeg' });
+        
+        // Calculate MP3 duration before uploading
+        try {
+          // Need to write to temp file first since mp3Duration requires a file path
+          const tempDir = path.join(process.cwd(), 'tmp');
+          await fs.mkdir(tempDir, { recursive: true });
+          const tempFilePath = path.join(tempDir, audioFileName);
+          await fs.writeFile(tempFilePath, concatenatedAudio);
+          
+          // Get duration using mp3-duration
+          audioDuration = await new Promise<number>((resolve, reject) => {
+            mp3Duration(tempFilePath, (err, duration) => {
+              if (err) reject(err);
+              else resolve(duration);
+            });
+          });
+          
+          // Clean up temp file
+          await fs.unlink(tempFilePath).catch(err => console.warn('Error deleting temp file:', err));
+          
+          console.log(`Calculated MP3 duration: ${audioDuration} seconds`);
+        } catch (durationError) {
+          console.error("Failed to calculate MP3 duration:", durationError);
+          // Continue without duration if we can't calculate it
+        }
         
         // Upload to Vercel Blob Storage
         const blob = await put(audioFileName, file, {
@@ -246,9 +273,34 @@ export async function processAudiobookJob({
       await fs.mkdir(outputDir, { recursive: true });
       const localAudioPath = path.join(outputDir, audioFileName);
       await fs.writeFile(localAudioPath, concatenatedAudio);
+      
+      // Calculate duration from the saved file
+      try {
+        audioDuration = await new Promise<number>((resolve, reject) => {
+          mp3Duration(localAudioPath, (err, duration) => {
+            if (err) reject(err);
+            else resolve(duration);
+          });
+        });
+        console.log(`Calculated MP3 duration: ${audioDuration} seconds`);
+      } catch (durationError) {
+        console.error("Failed to calculate MP3 duration:", durationError);
+        // Continue without duration if we can't calculate it
+      }
+      
       console.log(`Audiobook saved locally: ${localAudioPath}`);
     }
-    await db.update(audiobooks).set({ progress: 100, processingStatus: 'completed', audioPath }).where(eq(audiobooks.id, audiobookId));
+    
+    // Round the duration to the nearest second
+    const durationInSeconds = Math.round(audioDuration);
+    
+    // Update audiobook with path, duration, and completed status
+    await db.update(audiobooks).set({ 
+      progress: 100, 
+      processingStatus: 'completed', 
+      audioPath,
+      duration: durationInSeconds || null // Use null if we couldn't calculate duration
+    }).where(eq(audiobooks.id, audiobookId));
   } catch (error: any) {
     await db.update(audiobooks).set({ processingStatus: 'failed', errorDetails: error.message }).where(eq(audiobooks.id, audiobookId));
     throw error;

@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
         headers: await headers()
     });
 
-    if (request.url.endsWith("/auth/sign-in")) {
+    if (request.url.endsWith("/auth/sign-in") || request.url.endsWith("/auth/sign-up")) {
         if (session) {
             return NextResponse.redirect(new URL("/dashboard", request.url))
         } else {
@@ -24,5 +24,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
     runtime: "nodejs",
-    matcher: ["/dashboard", "/audiobooks", "/upload", "/auth/sign-in"]
+    matcher: ["/dashboard", "/audiobooks", "/upload", "/auth/sign-in", "/auth/sign-up"]
 }
