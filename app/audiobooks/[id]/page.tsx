@@ -12,6 +12,7 @@ import AudioPlayer from "@/components/audio-player"
 import { notFound } from "next/navigation"
 import AudiobookDetailsLoading from "./loading"
 import { EditTitleButton } from "@/components/edit-title-button"
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 
 export const metadata = {
   title: "Audiobook Details - Audiobook Generator",
@@ -61,66 +62,69 @@ async function AudiobookContent({ id }: { id: string }) {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex-col items-center mb-4">
         <Link href="/audiobooks">
           <Button variant="outline" size="sm">
             ← Back to Audiobooks
           </Button>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mt-2">
           <h1 className="text-3xl font-bold truncate">{audiobook.title}</h1>
-          {/* Use the client component for the edit button */}
-          {/* @ts-expect-error Async Server Component */}
           <EditTitleButton id={id} currentTitle={audiobook.title} />
         </div>
       </div>
 
-      <div className="border rounded-lg p-6 bg-card space-y-6">
+      <div className="border rounded-lg px-6 bg-card">
         <div>
-          <h2 className="text-xl font-semibold mb-2">Details</h2>
-          <div className="space-y-2">
-            <p>
-              <span className="font-medium">Original PDF:</span>{" "}
-              {audiobook.pdf.fileName}
-            </p>
-            <p>
-              <span className="font-medium">Status:</span>{" "}
-              <span className={`inline-block px-2 py-1 text-xs rounded-full ${
-                audiobook.processingStatus === "completed"
-                  ? "bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-400"
-                  : audiobook.processingStatus === "processing"
-                  ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-400"
-                  : audiobook.processingStatus === "failed"
-                  ? "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-400"
-                  : "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400"
-              }`}>
-                {audiobook.processingStatus.charAt(0).toUpperCase() +
-                  audiobook.processingStatus.slice(1)}
-              </span>
-            </p>
-            {audiobook.duration && (
-              <p>
-                <span className="font-medium">Duration:</span>{" "}
-                {formatDuration(audiobook.duration)}
-              </p>
-            )}
-            <p>
-              <span className="font-medium">Created:</span>{" "}
-              {new Date(audiobook.createdAt).toLocaleDateString()}
-            </p>
+          <Accordion type="single" defaultValue="details" collapsible>
+            <AccordionItem value="details">
+              <AccordionTrigger className="text-xl font-semibold mb-2">Details</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-2">
+                  <p>
+                    <span className="block font-medium truncate">Original PDF: {audiobook.pdf.fileName}</span>
+                  </p>
+                  <p>
+                    <span className="font-medium">Status:</span>{" "}
+                    <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                      audiobook.processingStatus === "completed"
+                        ? "bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-400"
+                        : audiobook.processingStatus === "processing"
+                        ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-400"
+                        : audiobook.processingStatus === "failed"
+                        ? "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-400"
+                        : "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400"
+                    }`}>
+                      {audiobook.processingStatus.charAt(0).toUpperCase() +
+                        audiobook.processingStatus.slice(1)}
+                    </span>
+                  </p>
+                  {audiobook.duration && (
+                    <p>
+                      <span className="font-medium">Duration:</span>{" "}
+                      {formatDuration(audiobook.duration)}
+                    </p>
+                  )}
+                  <p>
+                    <span className="font-medium">Created:</span>{" "}
+                    {new Date(audiobook.createdAt).toLocaleDateString()}
+                  </p>
 
-            {(audiobook.processingStatus === "processing" || audiobook.processingStatus === "pending") && (
-              <div className="mt-6">
-                <h3 className="font-medium mb-2">Progress</h3>
-                <div className="audiobook-progress-container" data-audiobook-id={audiobook.id}>
-                  <AudiobookProgress
-                    audiobookId={audiobook.id}
-                    showCancelButton={true}
-                  />
+                  {(audiobook.processingStatus === "processing" || audiobook.processingStatus === "pending") && (
+                    <div className="mt-6">
+                      <h3 className="font-medium mb-2">Progress</h3>
+                      <div className="audiobook-progress-container" data-audiobook-id={audiobook.id}>
+                        <AudiobookProgress
+                          audiobookId={audiobook.id}
+                          showCancelButton={true}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
 
         {/* View PDF Section */}

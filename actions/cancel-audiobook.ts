@@ -48,6 +48,7 @@ export async function cancelAudiobookGeneration(formData: FormData) {
       .update(audiobooks)
       .set({
         processingStatus: "failed",
+        progress: 0,
         errorDetails: "Processing was cancelled by the user"
       })
       .where(
@@ -56,10 +57,6 @@ export async function cancelAudiobookGeneration(formData: FormData) {
           eq(audiobooks.userId, session.user.id)
         )
       );
-
-    // Reset progress
-    setJobProgress(audiobookId, 0);
-    console.log(`Reset progress for audiobook ${audiobookId}`);
 
     // Revalidate paths
     revalidatePath("/audiobooks");

@@ -92,7 +92,7 @@ export function PdfUploadForm() {
       >
         {file ? (
           <div className="space-y-2">
-            <p className="font-medium">{file.name}</p>
+            <p className="font-medium truncate">{file.name}</p>
             <p className="text-sm text-muted-foreground">
               {(file.size / 1024 / 1024).toFixed(2)} MB
             </p>

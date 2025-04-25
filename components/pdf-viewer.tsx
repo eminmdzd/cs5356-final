@@ -22,7 +22,7 @@ export function PdfViewer({ pdfUrl, fileName }: PdfViewerProps) {
   return (
     <div className="border rounded-lg overflow-hidden bg-card">
       <div className="p-3 border-b flex justify-between items-center">
-        <h3 className="font-medium">{fileName}</h3>
+        <h3 className="font-medium truncate">{fileName}</h3>
         <div className="flex gap-2">
           <Button
             size="sm"

@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
 import mp3Duration from 'mp3-duration';
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 async function extractTextWithPdfParse(dataBuffer: Buffer): Promise<string> {
@@ -21,10 +22,10 @@ function splitTextIntoChunks(text: string, maxBytes: number): string[] {
   const chunks: string[] = [];
   let chunk = '';
   let chunkBytes = 0;
-  
+
   for (const sentence of sentences) {
     const sentenceBytes = Buffer.byteLength(sentence, 'utf8');
-    
+
     // If adding this sentence would exceed maxBytes and we already have content
     if (chunkBytes + sentenceBytes > maxBytes && chunk) {
       // If we're far below maxBytes, try to fill more (avoid small chunks)
@@ -32,7 +33,7 @@ function splitTextIntoChunks(text: string, maxBytes: number): string[] {
         // Add as much of the sentence as possible
         let partialSentence = '';
         const words = sentence.split(/\s+/);
-        
+
         for (const word of words) {
           const wordBytes = Buffer.byteLength(word + ' ', 'utf8');
           if (chunkBytes + wordBytes <= maxBytes) {
@@ -42,14 +43,14 @@ function splitTextIntoChunks(text: string, maxBytes: number): string[] {
             break;
           }
         }
-        
+
         if (partialSentence) {
           chunk += partialSentence;
         }
       }
-      
+
       chunks.push(chunk);
-      chunk = sentenceBytes > maxBytes ? 
+      chunk = sentenceBytes > maxBytes ?
         sentence.substring(0, Math.floor(maxBytes / 2)) : // Handle very long sentences
         sentence;
       chunkBytes = sentenceBytes;
@@ -58,7 +59,7 @@ function splitTextIntoChunks(text: string, maxBytes: number): string[] {
       chunkBytes += sentenceBytes;
     }
   }
-  
+
   if (chunk) chunks.push(chunk);
   return chunks;
 }
@@ -115,20 +116,20 @@ export async function processAudiobookJob({
     // Small docs: higher concurrency, large docs: lower concurrency
     const baseConcurrency = isProduction ? 4 : 5; // Increased from 3 to 4 for production
     const concurrency = docSizeInMB > 5 ? Math.max(2, Math.floor(baseConcurrency / 2)) : baseConcurrency;
-    
+
     console.log(`Using concurrency of ${concurrency} for TTS API calls (document size: ${docSizeInMB.toFixed(2)}MB)`);
-    
+
     let completed = 0;
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 3;
-    
+
     async function synthesizeChunk(i: number) {
       const startTime = Date.now();
       console.log(`Starting synthesis for chunk ${i}/${chunks.length} at ${new Date().toISOString()}`);
-      
+
       // Optimize input by removing excessive whitespace and normalizing text
       const optimizedText = chunks[i].replace(/\s+/g, ' ').trim();
-      
+
       const synthesisInput = { text: optimizedText };
       // Use a different voice in production to avoid potential overloaded voices
       const voice = {
@@ -141,13 +142,13 @@ export async function processAudiobookJob({
         pitch: 0.0,
         speakingRate: 1.0,
       };
-      
+
       try {
         console.log(`Calling TTS API for chunk ${i}, text length: ${optimizedText.length}`);
         const [response] = await ttsClient.synthesizeSpeech({ input: synthesisInput, voice, audioConfig });
         const duration = Date.now() - startTime;
         console.log(`TTS completed for chunk ${i} in ${duration}ms, response size: ${response.audioContent ? Buffer.from(response.audioContent as string, 'base64').length : 0} bytes`);
-        
+
         if (!response.audioContent) throw new Error(`No audio content for chunk ${i}`);
         const buffer = Buffer.isBuffer(response.audioContent)
           ? response.audioContent
@@ -157,22 +158,22 @@ export async function processAudiobookJob({
       } catch (error) {
         console.error(`Error synthesizing chunk ${i}:`, error);
         consecutiveErrors++;
-        
+
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
           throw error; // Stop processing after multiple consecutive errors
         }
-        
+
         // For isolated errors, retry once with reduced content
         if (optimizedText.length > 1000) {
           console.log(`Retrying chunk ${i} with reduced content`);
           try {
             const shorterText = optimizedText.substring(0, Math.floor(optimizedText.length * 0.8));
-            const [retryResponse] = await ttsClient.synthesizeSpeech({ 
-              input: { text: shorterText }, 
-              voice, 
-              audioConfig 
+            const [retryResponse] = await ttsClient.synthesizeSpeech({
+              input: { text: shorterText },
+              voice,
+              audioConfig
             });
-            
+
             if (!retryResponse.audioContent) throw new Error(`No audio content for retry of chunk ${i}`);
             const buffer = Buffer.isBuffer(retryResponse.audioContent)
               ? retryResponse.audioContent
@@ -187,22 +188,22 @@ export async function processAudiobookJob({
           throw error; // Re-throw for short chunks that can't be reduced further
         }
       }
-      
+
       completed++;
       // Progress: 40 + (completed/chunks.length)*50
       const progress = 40 + Math.floor((completed / chunks.length) * 50);
       await db.update(audiobooks).set({ progress }).where(eq(audiobooks.id, audiobookId));
     }
-    
+
     // Process chunks in batches with adaptive delay to prevent rate limiting
     for (let batchStart = 0; batchStart < chunks.length; batchStart += concurrency) {
       const batch = [];
       for (let j = 0; j < concurrency && batchStart + j < chunks.length; j++) {
         batch.push(synthesizeChunk(batchStart + j));
       }
-      
+
       await Promise.all(batch);
-      
+
       // Add small delay between batches in production to avoid rate limiting
       if (isProduction && batchStart + concurrency < chunks.length) {
         const delay = 500; // 500ms delay between batches
@@ -215,21 +216,21 @@ export async function processAudiobookJob({
     const audioFileName = `${audiobookId}.mp3`;
     let audioPath = `/audio/${audioFileName}`;
     let audioDuration = 0;
-    
+
     // In production, use Vercel Blob Storage
     if (isProduction) {
       try {
         // Dynamic import of Vercel Blob
         const { put } = await import('@vercel/blob');
-        
+
         // Check if we have the necessary token
         if (!process.env.BLOB_READ_WRITE_TOKEN) {
           throw new Error("Missing BLOB_READ_WRITE_TOKEN in production environment");
         }
-        
+
         // Create a File object from the buffer
         const file = new File([concatenatedAudio], audioFileName, { type: 'audio/mpeg' });
-        
+
         // Calculate MP3 duration before uploading
         try {
           // Need to write to temp file first since mp3Duration requires a file path
@@ -237,7 +238,7 @@ export async function processAudiobookJob({
           await fs.mkdir(tempDir, { recursive: true });
           const tempFilePath = path.join(tempDir, audioFileName);
           await fs.writeFile(tempFilePath, concatenatedAudio);
-          
+
           // Get duration using mp3-duration
           audioDuration = await new Promise<number>((resolve, reject) => {
             mp3Duration(tempFilePath, (err, duration) => {
@@ -245,21 +246,21 @@ export async function processAudiobookJob({
               else resolve(duration);
             });
           });
-          
+
           // Clean up temp file
           await fs.unlink(tempFilePath).catch(err => console.warn('Error deleting temp file:', err));
-          
+
           console.log(`Calculated MP3 duration: ${audioDuration} seconds`);
         } catch (durationError) {
           console.error("Failed to calculate MP3 duration:", durationError);
           // Continue without duration if we can't calculate it
         }
-        
+
         // Upload to Vercel Blob Storage
         const blob = await put(audioFileName, file, {
           access: 'public',
         });
-        
+
         // Update the path to the Blob URL
         audioPath = blob.url;
         console.log(`Audiobook saved to Blob Storage: ${audioPath}`);
@@ -273,7 +274,7 @@ export async function processAudiobookJob({
       await fs.mkdir(outputDir, { recursive: true });
       const localAudioPath = path.join(outputDir, audioFileName);
       await fs.writeFile(localAudioPath, concatenatedAudio);
-      
+
       // Calculate duration from the saved file
       try {
         audioDuration = await new Promise<number>((resolve, reject) => {
@@ -287,17 +288,17 @@ export async function processAudiobookJob({
         console.error("Failed to calculate MP3 duration:", durationError);
         // Continue without duration if we can't calculate it
       }
-      
+
       console.log(`Audiobook saved locally: ${localAudioPath}`);
     }
-    
+
     // Round the duration to the nearest second
     const durationInSeconds = Math.round(audioDuration);
-    
+
     // Update audiobook with path, duration, and completed status
-    await db.update(audiobooks).set({ 
-      progress: 100, 
-      processingStatus: 'completed', 
+    await db.update(audiobooks).set({
+      progress: 100,
+      processingStatus: 'completed',
       audioPath,
       duration: durationInSeconds || null // Use null if we couldn't calculate duration
     }).where(eq(audiobooks.id, audiobookId));

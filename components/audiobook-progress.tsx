@@ -30,7 +30,7 @@ export function AudiobookProgress({
 
     // Add counter for stuck on 100% detection
     let stuckAt100Count = 0;
-    
+
     // Function to fetch progress
     const fetchProgress = async () => {
       try {
@@ -43,16 +43,16 @@ export function AudiobookProgress({
 
         const data = await response.json();
         const newProgress = data.progress || 0;
-        
+
         // Detect when stuck at 100% in processing state
         if (newProgress === 100 && data.status === "processing") {
           stuckAt100Count++;
           console.log(`Detected 100% progress but still processing (count: ${stuckAt100Count})`);
-          
+
           // After 3 consecutive detections of being stuck at 100%, force a refresh
           if (stuckAt100Count >= 3) {
             console.log("Audiobook seems to be completed but UI is stuck, forcing refresh");
-            
+
             // Force reload the page to get the latest status
             if (window.location.pathname.includes(`/audiobooks/${audiobookId}`)) {
               window.location.reload();
@@ -87,11 +87,11 @@ export function AudiobookProgress({
                 },
               });
             }
-            
+
             // Always trigger revalidation to update the UI when completed
             // This helps fix the "stuck on finalizing" issue
             router.refresh();
-            
+
             // Force a reload of the page if we're already on the audiobook detail page
             // to prevent "stuck on finalizing" issue
             if (window.location.pathname.includes(`/audiobooks/${audiobookId}`)) {

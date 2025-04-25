@@ -14,17 +14,17 @@ export function EditTitleButton({ id, currentTitle }: EditTitleButtonProps) {
 
   const handleEditClick = async () => {
     const newTitle = prompt('Enter new title:', currentTitle)
-    
+
     if (newTitle && newTitle !== currentTitle) {
       setIsUpdating(true)
-      
+
       try {
         const formData = new FormData()
         formData.append('id', id)
         formData.append('title', newTitle)
-        
+
         const result = await updateAudiobookTitle(formData)
-        
+
         if (result === 'success') {
           window.location.reload()
         } else {
@@ -40,10 +40,10 @@ export function EditTitleButton({ id, currentTitle }: EditTitleButtonProps) {
   }
 
   return (
-    <Button 
-      type="button" 
-      variant="ghost" 
-      size="icon" 
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
       className="text-muted-foreground hover:text-primary h-8 w-8 border border-dashed border-muted hover:border-primary"
       onClick={handleEditClick}
       disabled={isUpdating}
