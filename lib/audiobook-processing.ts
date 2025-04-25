@@ -70,19 +70,28 @@ export async function processAudiobookJob({
     const text = await extractTextWithPdfParse(dataBuffer);
     await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
 
-    // 2. Split text into chunks
-    const chunks = splitTextIntoChunks(text, 5000);
+    // 2. Split text into smaller chunks for production
+    // Use smaller chunks in production to prevent timeouts
+    const maxChunkSize = isProduction ? 2000 : 5000;
+    console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
+    const chunks = splitTextIntoChunks(text, maxChunkSize);
     await db.update(audiobooks).set({ progress: 40 }).where(eq(audiobooks.id, audiobookId));
 
-    // 3. Generate audio for each chunk (max 5 concurrent)
+    // 3. Generate audio for each chunk (reduced concurrency in production)
     const audioBuffers: Buffer[] = new Array(chunks.length);
-    const concurrency = 5;
+    // Use lower concurrency in production to prevent TTS API overwhelm
+    const concurrency = isProduction ? 1 : 5;
+    console.log(`Using concurrency of ${concurrency} for TTS API calls`);
     let completed = 0;
     async function synthesizeChunk(i: number) {
+      const startTime = Date.now();
+      console.log(`Starting synthesis for chunk ${i}/${chunks.length} at ${new Date().toISOString()}`);
+      
       const synthesisInput = { text: chunks[i] };
+      // Use a different voice in production to avoid potential overloaded voices
       const voice = {
         languageCode: 'en-US',
-        name: 'en-US-Neural2-D',
+        name: isProduction ? 'en-US-Neural2-F' : 'en-US-Neural2-D',
       };
       const audioConfig = {
         audioEncoding: 'MP3' as const,
@@ -90,12 +99,22 @@ export async function processAudiobookJob({
         pitch: 0.0,
         speakingRate: 1.0,
       };
-      const [response] = await ttsClient.synthesizeSpeech({ input: synthesisInput, voice, audioConfig });
-      if (!response.audioContent) throw new Error(`No audio content for chunk ${i}`);
-      const buffer = Buffer.isBuffer(response.audioContent)
-        ? response.audioContent
-        : Buffer.from(response.audioContent as string, 'base64');
-      audioBuffers[i] = buffer;
+      
+      try {
+        console.log(`Calling TTS API for chunk ${i}, text length: ${chunks[i].length}`);
+        const [response] = await ttsClient.synthesizeSpeech({ input: synthesisInput, voice, audioConfig });
+        const duration = Date.now() - startTime;
+        console.log(`TTS completed for chunk ${i} in ${duration}ms, response size: ${response.audioContent ? Buffer.from(response.audioContent as string, 'base64').length : 0} bytes`);
+        
+        if (!response.audioContent) throw new Error(`No audio content for chunk ${i}`);
+        const buffer = Buffer.isBuffer(response.audioContent)
+          ? response.audioContent
+          : Buffer.from(response.audioContent as string, 'base64');
+        audioBuffers[i] = buffer;
+      } catch (error) {
+        console.error(`Error synthesizing chunk ${i}:`, error);
+        throw error; // Re-throw to halt processing
+      }
       completed++;
       // Progress: 40 + (completed/chunks.length)*50
       const progress = 40 + Math.floor((completed / chunks.length) * 50);
