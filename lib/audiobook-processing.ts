@@ -14,22 +14,50 @@ async function extractTextWithPdfParse(dataBuffer: Buffer): Promise<string> {
 }
 
 function splitTextIntoChunks(text: string, maxBytes: number): string[] {
-  // Simple split by sentences, but keep under maxBytes
+  // Optimized chunk splitting that maximizes chunk size for fewer API calls
+  // Split by sentences first
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
   const chunks: string[] = [];
   let chunk = '';
   let chunkBytes = 0;
+  
   for (const sentence of sentences) {
     const sentenceBytes = Buffer.byteLength(sentence, 'utf8');
+    
+    // If adding this sentence would exceed maxBytes and we already have content
     if (chunkBytes + sentenceBytes > maxBytes && chunk) {
+      // If we're far below maxBytes, try to fill more (avoid small chunks)
+      if (chunkBytes < maxBytes * 0.75) {
+        // Add as much of the sentence as possible
+        let partialSentence = '';
+        const words = sentence.split(/\s+/);
+        
+        for (const word of words) {
+          const wordBytes = Buffer.byteLength(word + ' ', 'utf8');
+          if (chunkBytes + wordBytes <= maxBytes) {
+            partialSentence += word + ' ';
+            chunkBytes += wordBytes;
+          } else {
+            break;
+          }
+        }
+        
+        if (partialSentence) {
+          chunk += partialSentence;
+        }
+      }
+      
       chunks.push(chunk);
-      chunk = sentence;
+      chunk = sentenceBytes > maxBytes ? 
+        sentence.substring(0, Math.floor(maxBytes / 2)) : // Handle very long sentences
+        sentence;
       chunkBytes = sentenceBytes;
     } else {
       chunk += sentence;
       chunkBytes += sentenceBytes;
     }
   }
+  
   if (chunk) chunks.push(chunk);
   return chunks;
 }
@@ -70,24 +98,37 @@ export async function processAudiobookJob({
     const text = await extractTextWithPdfParse(dataBuffer);
     await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
 
-    // 2. Split text into smaller chunks for production
-    // Use smaller chunks in production to prevent timeouts
-    const maxChunkSize = isProduction ? 3000 : 5000;
+    // 2. Split text into optimized chunks for production
+    // Use larger chunks but stay under request limit
+    const maxChunkSize = isProduction ? 4700 : 5000; // Increased from 3000 to 4700 for production
     console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
     const chunks = splitTextIntoChunks(text, maxChunkSize);
+    console.log(`Created ${chunks.length} chunks for processing`);
     await db.update(audiobooks).set({ progress: 40 }).where(eq(audiobooks.id, audiobookId));
 
-    // 3. Generate audio for each chunk (reduced concurrency in production)
+    // 3. Generate audio for each chunk with optimized concurrency
     const audioBuffers: Buffer[] = new Array(chunks.length);
-    // Use lower concurrency in production to prevent TTS API overwhelm
-    const concurrency = isProduction ? 3 : 5;
-    console.log(`Using concurrency of ${concurrency} for TTS API calls`);
+    // Use adaptive concurrency based on document size
+    const docSizeInMB = dataBuffer.length / (1024 * 1024);
+    // Adjust concurrency based on document size to prevent API rate limits
+    // Small docs: higher concurrency, large docs: lower concurrency
+    const baseConcurrency = isProduction ? 4 : 5; // Increased from 3 to 4 for production
+    const concurrency = docSizeInMB > 5 ? Math.max(2, Math.floor(baseConcurrency / 2)) : baseConcurrency;
+    
+    console.log(`Using concurrency of ${concurrency} for TTS API calls (document size: ${docSizeInMB.toFixed(2)}MB)`);
+    
     let completed = 0;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 3;
+    
     async function synthesizeChunk(i: number) {
       const startTime = Date.now();
       console.log(`Starting synthesis for chunk ${i}/${chunks.length} at ${new Date().toISOString()}`);
       
-      const synthesisInput = { text: chunks[i] };
+      // Optimize input by removing excessive whitespace and normalizing text
+      const optimizedText = chunks[i].replace(/\s+/g, ' ').trim();
+      
+      const synthesisInput = { text: optimizedText };
       // Use a different voice in production to avoid potential overloaded voices
       const voice = {
         languageCode: 'en-US',
@@ -101,7 +142,7 @@ export async function processAudiobookJob({
       };
       
       try {
-        console.log(`Calling TTS API for chunk ${i}, text length: ${chunks[i].length}`);
+        console.log(`Calling TTS API for chunk ${i}, text length: ${optimizedText.length}`);
         const [response] = await ttsClient.synthesizeSpeech({ input: synthesisInput, voice, audioConfig });
         const duration = Date.now() - startTime;
         console.log(`TTS completed for chunk ${i} in ${duration}ms, response size: ${response.audioContent ? Buffer.from(response.audioContent as string, 'base64').length : 0} bytes`);
@@ -111,22 +152,61 @@ export async function processAudiobookJob({
           ? response.audioContent
           : Buffer.from(response.audioContent as string, 'base64');
         audioBuffers[i] = buffer;
+        consecutiveErrors = 0; // Reset error counter on success
       } catch (error) {
         console.error(`Error synthesizing chunk ${i}:`, error);
-        throw error; // Re-throw to halt processing
+        consecutiveErrors++;
+        
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          throw error; // Stop processing after multiple consecutive errors
+        }
+        
+        // For isolated errors, retry once with reduced content
+        if (optimizedText.length > 1000) {
+          console.log(`Retrying chunk ${i} with reduced content`);
+          try {
+            const shorterText = optimizedText.substring(0, Math.floor(optimizedText.length * 0.8));
+            const [retryResponse] = await ttsClient.synthesizeSpeech({ 
+              input: { text: shorterText }, 
+              voice, 
+              audioConfig 
+            });
+            
+            if (!retryResponse.audioContent) throw new Error(`No audio content for retry of chunk ${i}`);
+            const buffer = Buffer.isBuffer(retryResponse.audioContent)
+              ? retryResponse.audioContent
+              : Buffer.from(retryResponse.audioContent as string, 'base64');
+            audioBuffers[i] = buffer;
+            consecutiveErrors = 0; // Reset error counter on successful retry
+          } catch (retryError) {
+            console.error(`Retry failed for chunk ${i}:`, retryError);
+            throw retryError; // Re-throw if retry also fails
+          }
+        } else {
+          throw error; // Re-throw for short chunks that can't be reduced further
+        }
       }
+      
       completed++;
       // Progress: 40 + (completed/chunks.length)*50
       const progress = 40 + Math.floor((completed / chunks.length) * 50);
       await db.update(audiobooks).set({ progress }).where(eq(audiobooks.id, audiobookId));
     }
-    // Process chunks in batches of 5
+    
+    // Process chunks in batches with adaptive delay to prevent rate limiting
     for (let batchStart = 0; batchStart < chunks.length; batchStart += concurrency) {
       const batch = [];
       for (let j = 0; j < concurrency && batchStart + j < chunks.length; j++) {
         batch.push(synthesizeChunk(batchStart + j));
       }
+      
       await Promise.all(batch);
+      
+      // Add small delay between batches in production to avoid rate limiting
+      if (isProduction && batchStart + concurrency < chunks.length) {
+        const delay = 500; // 500ms delay between batches
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
 
     // 4. Concatenate audio and save to appropriate storage
