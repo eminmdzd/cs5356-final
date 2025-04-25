@@ -4,25 +4,13 @@ import { eq } from 'drizzle-orm';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { PDFExtract } from 'pdf.js-extract';
-import { GlobalWorkerOptions } from 'pdfjs-dist';
-
-GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
-
-// Add any other imports needed from the old worker
-
-const pdfExtract = new PDFExtract();
+import pdfParse from 'pdf-parse';
 const isProduction = process.env.NODE_ENV === 'production';
 
-async function extractTextWithPdfJsExtract(dataBuffer: Buffer): Promise<string> {
-  // Use pdf.js-extract to extract text
-  return new Promise((resolve, reject) => {
-    pdfExtract.extractBuffer(dataBuffer, {}, (err, data) => {
-      if (err) return reject(err);
-      const text = data?.pages?.map((page) => page.content.map((c) => c.str).join(' ')).join('\n') || '';
-      resolve(text);
-    });
-  });
+async function extractTextWithPdfParse(dataBuffer: Buffer): Promise<string> {
+  // Use pdf-parse to extract text
+  const data = await pdfParse(dataBuffer);
+  return data.text;
 }
 
 function splitTextIntoChunks(text: string, maxBytes: number): string[] {
@@ -79,7 +67,7 @@ export async function processAudiobookJob({
       dataBuffer = await fs.readFile(absolutePath);
     }
     await db.update(audiobooks).set({ progress: 20 }).where(eq(audiobooks.id, audiobookId));
-    const text = await extractTextWithPdfJsExtract(dataBuffer);
+    const text = await extractTextWithPdfParse(dataBuffer);
     await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
 
     // 2. Split text into chunks
