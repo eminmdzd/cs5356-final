@@ -11,6 +11,7 @@ import { PdfViewer } from "@/components/pdf-viewer"
 import AudioPlayer from "@/components/audio-player"
 import { notFound } from "next/navigation"
 import AudiobookDetailsLoading from "./loading"
+import { EditTitleButton } from "@/components/edit-title-button"
 
 export const metadata = {
   title: "Audiobook Details - Audiobook Generator",
@@ -68,63 +69,9 @@ async function AudiobookContent({ id }: { id: string }) {
         </Link>
         <div className="flex items-center gap-2">
           <h1 className="text-3xl font-bold truncate">{audiobook.title}</h1>
-          <form action={async (formData: FormData) => {
-            'use server';
-            // Import the server action
-            const { updateAudiobookTitle } = await import('@/actions/audiobook');
-            
-            // Pre-populate the form data with audiobook ID
-            formData.append('id', id);
-            
-            // The title is added by client script
-            
-            // Call the server action
-            return updateAudiobookTitle(formData);
-          }}>
-            <input type="hidden" name="id" value={id} />
-            <Button 
-              type="button" 
-              variant="ghost" 
-              size="icon" 
-              className="text-muted-foreground hover:text-primary h-8 w-8 border border-dashed border-muted hover:border-primary"
-              onClick={(e) => {
-                const btn = e.currentTarget;
-                const newTitle = prompt('Enter new title:', audiobook.title);
-                if (newTitle && newTitle !== audiobook.title) {
-                  const form = btn.closest('form');
-                  if (form) {
-                    const formData = new FormData(form);
-                    formData.set('title', newTitle);
-                    const submit = document.createElement('script');
-                    submit.innerHTML = `
-                      (async () => {
-                        const formData = new FormData();
-                        formData.append('id', '${id}');
-                        formData.append('title', ${JSON.stringify(newTitle)});
-                        
-                        try {
-                          const res = await fetch('/api/update-title', {
-                            method: 'POST',
-                            body: formData
-                          });
-                          if (res.ok) {
-                            window.location.reload();
-                          }
-                        } catch (e) {
-                          console.error(e);
-                        }
-                      })();
-                    `;
-                    document.body.appendChild(submit);
-                    setTimeout(() => document.body.removeChild(submit), 100);
-                  }
-                }
-              }}
-            >
-              <span className="sr-only">Edit title</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>
-            </Button>
-          </form>
+          {/* Use the client component for the edit button */}
+          {/* @ts-expect-error Async Server Component */}
+          <EditTitleButton id={id} currentTitle={audiobook.title} />
         </div>
       </div>
 
