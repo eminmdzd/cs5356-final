@@ -1,4 +1,4 @@
-# Audiobook Generator App.
+# Audiobook Generator App
 
 This application allows users to generate audiobooks from PDF files using Google's Text-to-Speech Long Audio API.
 
