@@ -4,7 +4,6 @@
 
 ***Todo***
 - somehow verify that created chunks are correct
-- Improve responsiveness on various screen sizes
 
 **_Issues_**
 - slow, pruning paper from hardware for example took 3-4 mins but better

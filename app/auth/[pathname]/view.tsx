@@ -22,7 +22,7 @@ export function AuthView({
       <AuthCard
         pathname={pathname}
         classNames={{
-          base: "py-4 w-1/2",
+          base: "py-4 w-full max-w-md md:max-w-lg",
           settings: {
             card: {
               base: "p-4 rounded-md",

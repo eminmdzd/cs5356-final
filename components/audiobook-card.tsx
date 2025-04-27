@@ -163,13 +163,13 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>)}
-      <div className="p-4 flex-1">
+      <div className="p-3 sm:p-4 flex-1">
         {isEditing ? (
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-2">
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="h-8"
+              className="h-8 w-full"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -180,37 +180,39 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
                 }
               }}
             />
-            <Button size="sm" onClick={handleTitleSave}>Save</Button>
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              onClick={() => {
-                setTitle(audiobook.title)
-                setIsEditing(false)
-              }}
-            >
-              Cancel
-            </Button>
+            <div className="flex gap-2 mt-2 sm:mt-0">
+              <Button size="sm" onClick={handleTitleSave}>Save</Button>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={() => {
+                  setTitle(audiobook.title)
+                  setIsEditing(false)
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         ) : (
           <div 
             className="cursor-pointer"
             onClick={() => setIsEditing(true)}
           >
-            <h3 className="text-xl font-medium truncate pr-16">{audiobook.title}</h3>
+            <h3 className="text-lg sm:text-xl font-medium truncate pr-12 sm:pr-16">{audiobook.title}</h3>
           </div>
         )}
-        <p className="text-muted-foreground text-sm truncate mb-2">
+        <p className="text-muted-foreground text-xs sm:text-sm truncate mb-2">
           {audiobook.pdf.fileName}
         </p>
         <StatusBadge status={audiobook.processingStatus} />
         {audiobook.processingStatus === "completed" && audiobook.duration && (
-          <p className="text-sm mt-2">
+          <p className="text-xs sm:text-sm mt-2">
             Duration: {formatDuration(audiobook.duration)}
           </p>
         )}
         {(audiobook.processingStatus === "processing" || audiobook.processingStatus === "pending") && (
-          <div className="mt-3">
+          <div className="mt-2 sm:mt-3">
             <AudiobookProgress
               audiobookId={audiobook.id}
               showCancelButton={true}
@@ -218,7 +220,7 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
           </div>
         )}
       </div>
-      <div className="p-4 pt-0">
+      <div className="p-3 sm:p-4 pt-0">
         <Link href={`/audiobooks/${audiobook.id}`}>
           <Button size="sm" variant="outline" className="w-full">
             View Details
@@ -228,13 +230,14 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card p-6 rounded-lg max-w-md w-full shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">Confirm Deletion</h3>
-            <p className="mb-6 overflow-hidden text-ellipsis">Are you sure you want to delete "{audiobook.title}"? This action cannot be undone.</p>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card p-4 sm:p-6 rounded-lg max-w-md w-full shadow-xl">
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">Confirm Deletion</h3>
+            <p className="mb-4 sm:mb-6 text-sm sm:text-base overflow-hidden text-ellipsis">Are you sure you want to delete "{audiobook.title}"? This action cannot be undone.</p>
             <div className="flex justify-end gap-2">
               <Button 
                 variant="outline" 
+                size="sm"
                 onClick={handleCancelDelete}
                 disabled={isDeleting}
               >
@@ -242,6 +245,7 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
               </Button>
               <Button 
                 variant="destructive" 
+                size="sm"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
               >

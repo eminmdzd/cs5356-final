@@ -56,8 +56,8 @@ export default function AudiobooksPage() {
   
   if (loading) {
     return (
-      <main className="container self-center py-8">
-        <div className="flex justify-between items-center mb-6">
+      <main className="container self-center p-8">
+        <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">My Audiobooks</h1>
           <Link href="/upload">
             <Button>Upload New PDF</Button>
@@ -83,8 +83,8 @@ export default function AudiobooksPage() {
   const pagination = data?.pagination;
   
   return (
-    <main className="container self-center py-8">
-      <div className="flex justify-between items-center mb-6">
+    <main className="container self-center p-8">
+      <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">My Audiobooks</h1>
         <Link href="/upload">
           <Button>Upload New PDF</Button>
@@ -100,7 +100,7 @@ export default function AudiobooksPage() {
           </div>
           
           {pagination && pagination.totalPages > 1 && (
-            <div className="flex justify-center items-center space-x-2 mt-8">
+            <div className="flex justify-center items-center space-x-2 mt-10">
               <Button 
                 variant="outline" 
                 disabled={!pagination.hasPrevPage}

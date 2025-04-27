@@ -62,25 +62,25 @@ async function AudiobookContent({ id }: { id: string }) {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex-col items-center mb-4">
+      <div className="flex-col items-center mb-8">
         <Link href="/audiobooks">
           <Button variant="outline" size="sm">
             ← Back to Audiobooks
           </Button>
         </Link>
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-2 mt-4">
           <h1 className="text-3xl font-bold truncate">{audiobook.title}</h1>
           <EditTitleButton id={id} currentTitle={audiobook.title} />
         </div>
       </div>
 
-      <div className="border rounded-lg px-6 bg-card">
-        <div>
+      <div className="border rounded-lg px-6 py-6 bg-card">
+        <div className="mb-8">
           <Accordion type="single" defaultValue="details" collapsible>
             <AccordionItem value="details">
               <AccordionTrigger className="text-xl font-semibold mb-2">Details</AccordionTrigger>
               <AccordionContent>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p>
                     <span className="block font-medium truncate">Original PDF: {audiobook.pdf.fileName}</span>
                   </p>
@@ -111,8 +111,8 @@ async function AudiobookContent({ id }: { id: string }) {
                   </p>
 
                   {(audiobook.processingStatus === "processing" || audiobook.processingStatus === "pending") && (
-                    <div className="mt-6">
-                      <h3 className="font-medium mb-2">Progress</h3>
+                    <div className="mt-8">
+                      <h3 className="font-medium mb-3">Progress</h3>
                       <div className="audiobook-progress-container" data-audiobook-id={audiobook.id}>
                         <AudiobookProgress
                           audiobookId={audiobook.id}
@@ -128,8 +128,8 @@ async function AudiobookContent({ id }: { id: string }) {
         </div>
 
         {/* View PDF Section */}
-        <div>
-          <h2 className="text-xl font-semibold mb-4">PDF Document</h2>
+        <div className="mb-10">
+          <h2 className="text-xl font-semibold mb-6">PDF Document</h2>
           <PdfViewer
             pdfUrl={audiobook.pdf.filePath}
             fileName={audiobook.pdf.fileName}
@@ -138,8 +138,8 @@ async function AudiobookContent({ id }: { id: string }) {
 
         {/* Audio Player Section */}
         {audiobook.processingStatus === "completed" && audiobook.audioPath && (
-          <div className="mt-6">
-            <h2 className="text-xl font-semibold mb-4">Audio</h2>
+          <div className="mt-10 mb-6">
+            <h2 className="text-xl font-semibold mb-6">Audio</h2>
             <AudioPlayer
               audioPath={audiobook.audioPath}
               audiobookId={audiobook.id}
@@ -150,12 +150,12 @@ async function AudiobookContent({ id }: { id: string }) {
 
         {/* Error Details Section */}
         {audiobook.processingStatus === "failed" && audiobook.errorDetails && (
-          <div className="mt-6">
-            <h2 className="text-xl font-semibold mb-2 text-red-500">Error Details</h2>
-            <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300">
+          <div className="mt-10">
+            <h2 className="text-xl font-semibold mb-4 text-red-500">Error Details</h2>
+            <div className="p-4 bg-red-50 border border-red-200 rounded text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300">
               {audiobook.errorDetails}
             </div>
-            <div className="mt-4">
+            <div className="mt-6">
               <form action={async (formData: FormData) => {
                 'use server';
                 // Import the server action

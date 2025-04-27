@@ -7,6 +7,7 @@ import * as path from 'path';
 import pdfParse from 'pdf-parse';
 import mp3Duration from 'mp3-duration';
 import { sendAudiobookCompletionEmail } from './email';
+import { revalidatePath } from 'next/cache';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -373,12 +374,10 @@ export async function processAudiobookJob({
       }
     }
     
-    // Force revalidation of paths to ensure UI updates
+    // Use server actions for revalidation outside of render context
     try {
-      const { revalidatePath } = await import('next/cache');
-      revalidatePath('/audiobooks');
-      revalidatePath('/dashboard');
-      revalidatePath(`/audiobooks/${audiobookId}`);
+      const { default: revalidatePaths } = await import('@/actions/revalidate');
+      await revalidatePaths(['/audiobooks', '/dashboard', `/audiobooks/${audiobookId}`]);
       console.log(`Revalidated paths for completed audiobook: ${audiobookId}`);
     } catch (revalidateError) {
       console.error('Error revalidating paths:', revalidateError);
