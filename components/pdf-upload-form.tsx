@@ -44,10 +44,19 @@ export function PdfUploadForm() {
 
       const result = await uploadPdf(formData)
 
-      if (result === "success") {
-        toast.success("PDF uploaded successfully!")
-        router.push("/dashboard")
-        router.refresh()
+      if (result && result.success && result.audiobookId) {
+        toast.success("PDF uploaded, starting processing...")
+        // Fire-and-forget processing
+        fetch("/api/process-audiobook", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audiobookId: result.audiobookId }),
+        }).catch((err) => {
+          console.error("Failed to start processing:", err);
+        });
+        toast.success("Audiobook processing started!");
+        router.push("/dashboard");
+        router.refresh();
       } else {
         setError(result)
         toast.error(result)

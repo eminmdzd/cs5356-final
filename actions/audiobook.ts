@@ -179,21 +179,14 @@ export async function generateAudiobook(formData: FormData) {
 
     // Set initial progress to 5% in the DB
     await db.update(audiobooks)
-      .set({ progress: 5 })
+      .set({ progress: 5, processingStatus: 'pending' })
       .where(and(
         eq(audiobooks.id, targetAudiobookId),
         eq(audiobooks.userId, session.user.id)
       ));
 
-    // Start processing asynchronously (do not await)
-    void processAudiobookJob({
-      audiobookId: targetAudiobookId,
-      pdfPath: pdf.filePath,
-      userId: session.user.id,
-      ttsClient
-    });
-
-    return "success";
+    // Do NOT start processing here. Client will now call /api/process-audiobook to kick off processing.
+    return { success: true, audiobookId: targetAudiobookId, pdfId };
   } catch (error: any) {
     console.error("Error initiating audiobook generation:", error);
     return error.message || "Failed to start audiobook generation";
