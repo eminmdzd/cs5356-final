@@ -90,16 +90,44 @@ export function AudiobookProgress({
               });
             }
 
-            // Always trigger revalidation to update the UI when completed
-            // This helps fix the "stuck on finalizing" issue
+            // Immediately trigger revalidation to update the UI when completed
             router.refresh();
 
             // Force a reload of the page if we're already on the audiobook detail page
             // to prevent "stuck on finalizing" issue
             if (window.location.pathname.includes(`/audiobooks/${audiobookId}`)) {
+              console.log("On audiobook detail page, forcing immediate reload for completed status");
               setTimeout(() => {
                 window.location.reload();
-              }, 1000);
+              }, 500); // Reduced from 1000ms to 500ms for faster refresh
+            }
+          }
+          
+          // Also force refresh when we hit 100% progress, regardless of status
+          // This ensures UI updates immediately when processing is complete
+          if (newProgress === 100) {
+            console.log(`100% progress detected with status "${data.status}", forcing immediate refresh`);
+            
+            // Force an immediate router refresh
+            router.refresh();
+            
+            // If on the audiobook detail page, force a full page reload
+            if (window.location.pathname.includes(`/audiobooks/${audiobookId}`)) {
+              console.log("On detail page at 100% - forcing page reload");
+              window.location.reload();
+            }
+            
+            // If not on detail page but at 100%, do a hard navigation to force refresh
+            else if (data.status === "processing") {
+              console.log("Not on detail page but at 100% - forcing hard refresh");
+              // Schedule a delayed refresh to catch the completed status
+              setTimeout(() => {
+                router.refresh();
+                // Optionally add a query param to bypass any caching
+                if (typeof window !== 'undefined') {
+                  window.location.href = window.location.href.split('?')[0] + '?refresh=' + Date.now();
+                }
+              }, 500);
             }
           }
 
@@ -120,8 +148,20 @@ export function AudiobookProgress({
 
       // Schedule next poll if still mounted and not complete/failed
       if (isMounted && status !== "completed" && status !== "failed") {
-        // Use exponential backoff for errors (max 30 seconds)
-        const delay = errorCount > 0 ? Math.min(5000 * Math.pow(1.5, errorCount - 1), 30000) : 5000;
+        // Determine polling delay based on progress and error state
+        let delay = 5000; // Default 5 seconds
+        
+        if (errorCount > 0) {
+          // Use exponential backoff for errors (max 30 seconds)
+          delay = Math.min(5000 * Math.pow(1.5, errorCount - 1), 30000);
+        } else if (progress >= 90) {
+          // Poll more frequently when we're close to completion (every 1 second)
+          delay = 1000;
+        } else if (progress >= 80) {
+          // Poll more frequently in the final stages (every 2 seconds)
+          delay = 2000;
+        }
+        
         setTimeout(fetchProgress, delay);
       }
     };

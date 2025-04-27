@@ -84,6 +84,10 @@ export async function processAudiobookJob({
     let dataBuffer: Buffer;
     const isRemote = pdfPath.startsWith('http://') || pdfPath.startsWith('https://');
     const isProd = process.env.NODE_ENV === 'production';
+    
+    // Update progress to 10% - PDF fetching
+    await db.update(audiobooks).set({ progress: 10 }).where(eq(audiobooks.id, audiobookId));
+    
     if (isRemote && isProd) {
       // Fetch from Vercel Blob Storage or remote URL
       const response = await fetch(pdfPath);
@@ -96,17 +100,30 @@ export async function processAudiobookJob({
       const absolutePath = path.join(process.cwd(), 'public', cleanPath);
       dataBuffer = await fs.readFile(absolutePath);
     }
+    
+    // Update progress to 15% - PDF retrieved
+    await db.update(audiobooks).set({ progress: 15 }).where(eq(audiobooks.id, audiobookId));
+    
+    // Update progress to 20% - Starting text extraction
     await db.update(audiobooks).set({ progress: 20 }).where(eq(audiobooks.id, audiobookId));
     const text = await extractTextWithPdfParse(dataBuffer);
-    await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
+    
+    // Update progress to 25% - Text extraction complete
+    await db.update(audiobooks).set({ progress: 25 }).where(eq(audiobooks.id, audiobookId));
 
     // 2. Split text into optimized chunks for production
     // Use larger chunks but stay under request limit
     const maxChunkSize = isProduction ? 4700 : 5000; // Increased from 3000 to 4700 for production
     console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
+    
+    // Update progress to 30% - Starting text chunking
+    await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
+    
     const chunks = splitTextIntoChunks(text, maxChunkSize);
     console.log(`Created ${chunks.length} chunks for processing`);
-    await db.update(audiobooks).set({ progress: 40 }).where(eq(audiobooks.id, audiobookId));
+    
+    // Update progress to 35% - Text chunking complete
+    await db.update(audiobooks).set({ progress: 35 }).where(eq(audiobooks.id, audiobookId));
 
     // 3. Generate audio for each chunk with optimized concurrency
     const audioBuffers: Buffer[] = new Array(chunks.length);
@@ -119,9 +136,17 @@ export async function processAudiobookJob({
 
     console.log(`Using concurrency of ${concurrency} for TTS API calls (document size: ${docSizeInMB.toFixed(2)}MB)`);
 
+    // Update progress to 40% - Starting audio generation
+    await db.update(audiobooks).set({ progress: 40 }).where(eq(audiobooks.id, audiobookId));
+
     let completed = 0;
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 3;
+    
+    // Allocate progress range from 40% to 90% for audio generation based on chunks
+    const AUDIO_GEN_START_PROGRESS = 40;
+    const AUDIO_GEN_END_PROGRESS = 90;
+    const AUDIO_GEN_RANGE = AUDIO_GEN_END_PROGRESS - AUDIO_GEN_START_PROGRESS;
 
     async function synthesizeChunk(i: number) {
       const startTime = Date.now();
@@ -190,9 +215,10 @@ export async function processAudiobookJob({
       }
 
       completed++;
-      // Progress: 40 + (completed/chunks.length)*50
-      const progress = 40 + Math.floor((completed / chunks.length) * 50);
+      // Calculate more precise progress between 40% and 90% based on chunk completion
+      const progress = AUDIO_GEN_START_PROGRESS + Math.floor((completed / chunks.length) * AUDIO_GEN_RANGE);
       await db.update(audiobooks).set({ progress }).where(eq(audiobooks.id, audiobookId));
+      console.log(`Updated progress to ${progress}% after completing chunk ${i}/${chunks.length}`);
     }
 
     // Process chunks in batches with adaptive delay to prevent rate limiting
@@ -212,10 +238,16 @@ export async function processAudiobookJob({
     }
 
     // 4. Concatenate audio and save to appropriate storage
+    // Update progress to 90% - Starting audio file preparation
+    await db.update(audiobooks).set({ progress: 90 }).where(eq(audiobooks.id, audiobookId));
+    
     const concatenatedAudio = Buffer.concat(audioBuffers);
     const audioFileName = `${audiobookId}.mp3`;
     let audioPath = `/audio/${audioFileName}`;
     let audioDuration = 0;
+    
+    // Update progress to 92% - Audio concatenation complete
+    await db.update(audiobooks).set({ progress: 92 }).where(eq(audiobooks.id, audiobookId));
 
     // In production, use Vercel Blob Storage
     if (isProduction) {
@@ -230,6 +262,9 @@ export async function processAudiobookJob({
 
         // Create a File object from the buffer
         const file = new File([concatenatedAudio], audioFileName, { type: 'audio/mpeg' });
+
+        // Update progress to 95% - Preparing to upload file
+        await db.update(audiobooks).set({ progress: 95 }).where(eq(audiobooks.id, audiobookId));
 
         // Calculate MP3 duration before uploading
         try {
@@ -264,6 +299,9 @@ export async function processAudiobookJob({
         // Update the path to the Blob URL
         audioPath = blob.url;
         console.log(`Audiobook saved to Blob Storage: ${audioPath}`);
+        
+        // Update progress to 98% - File uploaded successfully
+        await db.update(audiobooks).set({ progress: 98 }).where(eq(audiobooks.id, audiobookId));
       } catch (error) {
         console.error("Failed to save audiobook to Blob Storage:", error);
         throw new Error(`Unable to save audiobook in production: ${error.message}`);
@@ -274,6 +312,9 @@ export async function processAudiobookJob({
       await fs.mkdir(outputDir, { recursive: true });
       const localAudioPath = path.join(outputDir, audioFileName);
       await fs.writeFile(localAudioPath, concatenatedAudio);
+      
+      // Update progress to 95% - File saved successfully
+      await db.update(audiobooks).set({ progress: 95 }).where(eq(audiobooks.id, audiobookId));
 
       // Calculate duration from the saved file
       try {
@@ -284,6 +325,9 @@ export async function processAudiobookJob({
           });
         });
         console.log(`Calculated MP3 duration: ${audioDuration} seconds`);
+        
+        // Update progress to 98% - Duration calculated successfully
+        await db.update(audiobooks).set({ progress: 98 }).where(eq(audiobooks.id, audiobookId));
       } catch (durationError) {
         console.error("Failed to calculate MP3 duration:", durationError);
         // Continue without duration if we can't calculate it
@@ -302,6 +346,18 @@ export async function processAudiobookJob({
       audioPath,
       duration: durationInSeconds || null // Use null if we couldn't calculate duration
     }).where(eq(audiobooks.id, audiobookId));
+    
+    // Force revalidation of paths to ensure UI updates
+    try {
+      const { revalidatePath } = await import('next/cache');
+      revalidatePath('/audiobooks');
+      revalidatePath('/dashboard');
+      revalidatePath(`/audiobooks/${audiobookId}`);
+      console.log(`Revalidated paths for completed audiobook: ${audiobookId}`);
+    } catch (revalidateError) {
+      console.error('Error revalidating paths:', revalidateError);
+      // Continue even if revalidation fails
+    }
   } catch (error: any) {
     await db.update(audiobooks).set({ processingStatus: 'failed', errorDetails: error.message }).where(eq(audiobooks.id, audiobookId));
     throw error;
