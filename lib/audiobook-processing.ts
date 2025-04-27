@@ -9,6 +9,58 @@ import mp3Duration from 'mp3-duration';
 import { sendAudiobookCompletionEmail } from './email';
 import { revalidatePath } from 'next/cache';
 
+// Initialize Google Cloud clients
+let ttsClient: TextToSpeechClient;
+try {
+  const isProduction = process.env.NODE_ENV === 'production';
+  console.log(`Initializing Google TTS client in ${isProduction ? 'production' : 'development'} mode`);
+
+  if (isProduction) {
+    // In production, directly use credentials from environment variables
+    if (process.env.GOOGLE_PROJECT_ID &&
+        process.env.GOOGLE_PRIVATE_KEY &&
+        process.env.GOOGLE_CLIENT_EMAIL) {
+
+      // Create credentials object directly from environment variables
+      const credentials = {
+        projectId: process.env.GOOGLE_PROJECT_ID,
+        credentials: {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL,
+          private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
+        }
+      };
+
+      console.log(`Using Google credentials directly from environment variables`);
+      ttsClient = new TextToSpeechClient(credentials);
+    }
+    // Fall back to credentials file if available
+    else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      console.log(`Falling back to credentials file: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
+      ttsClient = new TextToSpeechClient({
+        keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+      });
+    }
+    else {
+      throw new Error("No Google credentials found in production environment");
+    }
+  }
+  // Development mode - use credentials file
+  else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    console.log(`Using credentials file from GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
+    ttsClient = new TextToSpeechClient({
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+    });
+  }
+  else {
+    throw new Error("No Google credentials found. In development, set GOOGLE_APPLICATION_CREDENTIALS environment variable.")
+  }
+
+  console.log("Google TTS client initialized successfully");
+} catch (error) {
+  console.error("Failed to initialize Google TTS client:", error);
+  // We'll handle this error when the function is called
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 async function extractTextWithPdfParse(dataBuffer: Buffer): Promise<string> {
@@ -69,13 +121,9 @@ function splitTextIntoChunks(text: string, maxBytes: number): string[] {
 export async function processAudiobookJob({
   audiobookId,
   pdfPath,
-  userId,
-  ttsClient,
 }: {
   audiobookId: string;
   pdfPath: string;
-  userId: string;
-  ttsClient: TextToSpeechClient;
 }) {
   try {
     await db.update(audiobooks)
@@ -86,10 +134,10 @@ export async function processAudiobookJob({
     let dataBuffer: Buffer;
     const isRemote = pdfPath.startsWith('http://') || pdfPath.startsWith('https://');
     const isProd = process.env.NODE_ENV === 'production';
-    
+
     // Update progress to 10% - PDF fetching
     await db.update(audiobooks).set({ progress: 10 }).where(eq(audiobooks.id, audiobookId));
-    
+
     if (isRemote && isProd) {
       // Fetch from Vercel Blob Storage or remote URL
       const response = await fetch(pdfPath);
@@ -102,14 +150,14 @@ export async function processAudiobookJob({
       const absolutePath = path.join(process.cwd(), 'public', cleanPath);
       dataBuffer = await fs.readFile(absolutePath);
     }
-    
+
     // Update progress to 15% - PDF retrieved
     await db.update(audiobooks).set({ progress: 15 }).where(eq(audiobooks.id, audiobookId));
-    
+
     // Update progress to 20% - Starting text extraction
     await db.update(audiobooks).set({ progress: 20 }).where(eq(audiobooks.id, audiobookId));
     const text = await extractTextWithPdfParse(dataBuffer);
-    
+
     // Update progress to 25% - Text extraction complete
     await db.update(audiobooks).set({ progress: 25 }).where(eq(audiobooks.id, audiobookId));
 
@@ -117,13 +165,13 @@ export async function processAudiobookJob({
     // Use larger chunks but stay under request limit
     const maxChunkSize = isProduction ? 4700 : 5000; // Increased from 3000 to 4700 for production
     console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
-    
+
     // Update progress to 30% - Starting text chunking
     await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
-    
+
     const chunks = splitTextIntoChunks(text, maxChunkSize);
     console.log(`Created ${chunks.length} chunks for processing`);
-    
+
     // Update progress to 35% - Text chunking complete
     await db.update(audiobooks).set({ progress: 35 }).where(eq(audiobooks.id, audiobookId));
 
@@ -144,7 +192,7 @@ export async function processAudiobookJob({
     let completed = 0;
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 3;
-    
+
     // Allocate progress range from 40% to 90% for audio generation based on chunks
     const AUDIO_GEN_START_PROGRESS = 40;
     const AUDIO_GEN_END_PROGRESS = 90;
@@ -242,12 +290,12 @@ export async function processAudiobookJob({
     // 4. Concatenate audio and save to appropriate storage
     // Update progress to 90% - Starting audio file preparation
     await db.update(audiobooks).set({ progress: 90 }).where(eq(audiobooks.id, audiobookId));
-    
+
     const concatenatedAudio = Buffer.concat(audioBuffers);
     const audioFileName = `${audiobookId}.mp3`;
     let audioPath = `/audio/${audioFileName}`;
     let audioDuration = 0;
-    
+
     // Update progress to 92% - Audio concatenation complete
     await db.update(audiobooks).set({ progress: 92 }).where(eq(audiobooks.id, audiobookId));
 
@@ -301,7 +349,7 @@ export async function processAudiobookJob({
         // Update the path to the Blob URL
         audioPath = blob.url;
         console.log(`Audiobook saved to Blob Storage: ${audioPath}`);
-        
+
         // Update progress to 98% - File uploaded successfully
         await db.update(audiobooks).set({ progress: 98 }).where(eq(audiobooks.id, audiobookId));
       } catch (error) {
@@ -314,7 +362,7 @@ export async function processAudiobookJob({
       await fs.mkdir(outputDir, { recursive: true });
       const localAudioPath = path.join(outputDir, audioFileName);
       await fs.writeFile(localAudioPath, concatenatedAudio);
-      
+
       // Update progress to 95% - File saved successfully
       await db.update(audiobooks).set({ progress: 95 }).where(eq(audiobooks.id, audiobookId));
 
@@ -327,7 +375,7 @@ export async function processAudiobookJob({
           });
         });
         console.log(`Calculated MP3 duration: ${audioDuration} seconds`);
-        
+
         // Update progress to 98% - Duration calculated successfully
         await db.update(audiobooks).set({ progress: 98 }).where(eq(audiobooks.id, audiobookId));
       } catch (durationError) {
@@ -348,7 +396,7 @@ export async function processAudiobookJob({
       audioPath,
       duration: durationInSeconds || null // Use null if we couldn't calculate duration
     }).where(eq(audiobooks.id, audiobookId));
-    
+
     // Get audiobook details for email notification
     const audiobook = await db.query.audiobooks.findFirst({
       where: eq(audiobooks.id, audiobookId),
@@ -356,7 +404,7 @@ export async function processAudiobookJob({
         user: true
       }
     });
-    
+
     // Send email notification
     if (audiobook && audiobook.user && audiobook.user.email) {
       try {
@@ -373,7 +421,7 @@ export async function processAudiobookJob({
         // Continue even if email fails
       }
     }
-    
+
     // Use server actions for revalidation outside of render context
     try {
       const { default: revalidatePaths } = await import('@/actions/revalidate');

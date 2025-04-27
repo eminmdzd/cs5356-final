@@ -3,7 +3,6 @@ import { processAudiobookJob } from '@/lib/audiobook-processing';
 import { db } from '@/database/db'
 import { audiobooks, pdfs } from '@/database/schema/audiobooks';
 import { eq } from 'drizzle-orm';
-import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 
 // POST /api/process-audiobook
 export async function POST(req: NextRequest) {
@@ -23,15 +22,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'PDF not found' }, { status: 404 });
     }
 
-    // Init TTS client
-    const ttsClient = new TextToSpeechClient();
-
     // Kick off processing (awaited, but the client can fire-and-forget this call)
     await processAudiobookJob({
       audiobookId: audiobook.id,
       pdfPath: pdf.filePath,
-      userId: audiobook.userId,
-      ttsClient,
     });
 
     return NextResponse.json({ success: true });

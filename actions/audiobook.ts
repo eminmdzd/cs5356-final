@@ -9,7 +9,6 @@ import { and, eq } from "drizzle-orm"
 import { TextToSpeechClient } from "@google-cloud/text-to-speech"
 import * as fs from "fs/promises"
 import * as path from "path"
-import { processAudiobookJob } from "@/lib/audiobook-processing"
 // Import Vercel Blob conditionally
 let vercelBlob: any = { del: null };
 try {
