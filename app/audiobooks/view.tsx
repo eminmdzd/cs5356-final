@@ -1,62 +1,54 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { AudiobookCard } from "@/components/audiobook-card";
-import { Audiobook, Pdf } from "@/database/schema";
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { AudiobookCard } from "@/components/audiobook-card"
+import { Audiobook } from "@/database/schema"
+import { Pdf } from "@/database/schema"
 
-interface PaginatedAudiobooks {
-  audiobooks: (Audiobook & { pdf: Pdf })[];
+interface PaginationResponse {
+  audiobooks: (Audiobook & { pdf: Pdf })[]
   pagination: {
-    page: number;
-    limit: number;
-    totalCount: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
+    page: number
+    limit: number
+    totalCount: number
+    totalPages: number
+    hasNextPage: boolean
+    hasPrevPage: boolean
+  }
 }
 
-export default function AudiobooksPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<PaginatedAudiobooks | null>(null);
+export function AudiobooksContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<PaginationResponse | null>(null)
   
-  const currentPageParam = searchParams.get("page");
-  let currentPage = currentPageParam ? parseInt(currentPageParam, 10) : 1;
-  // Ensure page is at least 1
-  if (currentPage < 1) currentPage = 1;
+  const currentPage = parseInt(searchParams.get("page") || "1", 10)
   
   useEffect(() => {
     async function fetchAudiobooks() {
-      setLoading(true);
+      setLoading(true)
       try {
-        const response = await fetch(`/api/audiobooks?page=${currentPage}&limit=10`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch audiobooks");
-        }
-        const data = await response.json();
-        setData(data);
+        const response = await fetch(`/api/audiobooks?page=${currentPage}&limit=10`)
+        if (!response.ok) throw new Error("Failed to fetch audiobooks")
+        const data = await response.json()
+        setData(data)
       } catch (error) {
-        console.error("Error fetching audiobooks:", error);
+        console.error("Error fetching audiobooks:", error)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
     
-    fetchAudiobooks();
-  }, [currentPage]);
-  
-  function navigateToPage(page: number) {
-    router.push(`/audiobooks?page=${page}`);
-  }
+    fetchAudiobooks()
+  }, [currentPage])
   
   if (loading) {
     return (
-      <main className="container self-center py-8">
+      <div className="space-y-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">My Audiobooks</h1>
           <Link href="/upload">
@@ -64,7 +56,7 @@ export default function AudiobooksPage() {
           </Link>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+          {[...Array(6)].map((_, i) => (
             <div key={i} className="bg-card rounded-lg p-4 border shadow-sm animate-pulse">
               <div className="h-5 w-2/3 bg-muted rounded mb-3"></div>
               <div className="h-4 w-1/2 bg-muted rounded mb-6"></div>
@@ -75,15 +67,19 @@ export default function AudiobooksPage() {
             </div>
           ))}
         </div>
-      </main>
-    );
+      </div>
+    )
   }
   
-  const audiobooks = data?.audiobooks || [];
-  const pagination = data?.pagination;
+  const audiobooks = data?.audiobooks || []
+  const pagination = data?.pagination
+  
+  function handleChangePage(newPage: number) {
+    router.push(`/audiobooks?page=${newPage}`)
+  }
   
   return (
-    <main className="container self-center py-8">
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">My Audiobooks</h1>
         <Link href="/upload">
@@ -93,7 +89,7 @@ export default function AudiobooksPage() {
 
       {audiobooks.length > 0 ? (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {audiobooks.map((book) => (
               <AudiobookCard key={book.id} audiobook={book} />
             ))}
@@ -104,19 +100,19 @@ export default function AudiobooksPage() {
               <Button 
                 variant="outline" 
                 disabled={!pagination.hasPrevPage}
-                onClick={() => navigateToPage(pagination.page - 1)}
+                onClick={() => handleChangePage(pagination.page - 1)}
               >
                 Previous
               </Button>
               
-              <div className="text-sm px-4">
+              <div className="text-sm">
                 Page {pagination.page} of {pagination.totalPages}
               </div>
               
               <Button 
                 variant="outline" 
                 disabled={!pagination.hasNextPage}
-                onClick={() => navigateToPage(pagination.page + 1)}
+                onClick={() => handleChangePage(pagination.page + 1)}
               >
                 Next
               </Button>
@@ -134,6 +130,6 @@ export default function AudiobooksPage() {
           </Link>
         </div>
       )}
-    </main>
+    </>
   );
 }
