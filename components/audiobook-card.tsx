@@ -7,9 +7,10 @@ import { deleteAudiobook, generateAudiobook, updateAudiobookTitle } from "@/acti
 import { Trash2, RefreshCw, Pencil } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { Audiobook, Pdf } from "@/database/schema"
+import { useRouter } from "next/navigation"
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -53,10 +54,23 @@ function formatDuration(seconds: number): string {
 }
 
 export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf } }) {
+  const router = useRouter()
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState(audiobook.title)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  // Listen for custom revalidate events from other components
+  useEffect(() => {
+    const handleRevalidate = () => {
+      router.refresh()
+    }
+
+    window.addEventListener('revalidate', handleRevalidate)
+    return () => {
+      window.removeEventListener('revalidate', handleRevalidate)
+    }
+  }, [router])
 
   const handleTitleSave = async () => {
     if (title === audiobook.title) {
@@ -73,6 +87,14 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
 
       if (result === "success") {
         toast.success("Title updated successfully")
+        
+        // Trigger revalidation of the audiobooks page
+        if ((window as any).__refreshAudiobooks) {
+          (window as any).__refreshAudiobooks();
+        } else {
+          // Fallback to dispatching the event
+          window.dispatchEvent(new CustomEvent('revalidate-audiobooks'));
+        }
       } else {
         toast.error(result)
         // Reset to original title
@@ -108,6 +130,14 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
       if (result === "success") {
         toast.success("Audiobook deleted successfully")
         setShowDeleteModal(false)
+        
+        // Trigger revalidation of the audiobooks page
+        if ((window as any).__refreshAudiobooks) {
+          (window as any).__refreshAudiobooks();
+        } else {
+          // Fallback to dispatching the event
+          window.dispatchEvent(new CustomEvent('revalidate-audiobooks'));
+        }
       } else {
         toast.error(result)
         setIsDeleting(false)

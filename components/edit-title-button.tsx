@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { updateAudiobookTitle } from "@/actions/audiobook"
+import { useRouter } from "next/navigation"
 
 interface EditTitleButtonProps {
   id: string
@@ -11,6 +12,7 @@ interface EditTitleButtonProps {
 
 export function EditTitleButton({ id, currentTitle }: EditTitleButtonProps) {
   const [isUpdating, setIsUpdating] = useState(false)
+  const router = useRouter()
 
   const handleEditClick = async () => {
     const newTitle = prompt('Enter new title:', currentTitle)
@@ -26,7 +28,16 @@ export function EditTitleButton({ id, currentTitle }: EditTitleButtonProps) {
         const result = await updateAudiobookTitle(formData)
 
         if (result === 'success') {
-          window.location.reload()
+          // Trigger revalidation of the audiobooks page
+          if ((window as any).__refreshAudiobooks) {
+            (window as any).__refreshAudiobooks();
+          } else {
+            // Fallback to dispatching the event
+            window.dispatchEvent(new CustomEvent('revalidate-audiobooks'));
+          }
+          
+          // Also refresh the current page using router
+          router.refresh();
         } else {
           alert(`Failed to update title: ${result}`)
           setIsUpdating(false)

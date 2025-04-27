@@ -29,25 +29,55 @@ export default function AudiobooksPage() {
   let currentPage = currentPageParam ? parseInt(currentPageParam, 10) : 1;
   // Ensure page is at least 1
   if (currentPage < 1) currentPage = 1;
-  
-  useEffect(() => {
-    async function fetchAudiobooks() {
-      setLoading(true);
-      try {
-        const response = await fetch(`/api/audiobooks?page=${currentPage}&limit=10`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch audiobooks");
-        }
-        const data = await response.json();
-        setData(data);
-      } catch (error) {
-        console.error("Error fetching audiobooks:", error);
-      } finally {
-        setLoading(false);
+
+  // Function to fetch audiobooks that can be called from anywhere
+  const fetchAudiobooks = async () => {
+    setLoading(true);
+    try {
+      // Add cache-busting timestamp to ensure we get fresh data
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/audiobooks?page=${currentPage}&limit=10&_=${timestamp}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch audiobooks");
       }
+      const data = await response.json();
+      setData(data);
+    } catch (error) {
+      console.error("Error fetching audiobooks:", error);
+    } finally {
+      setLoading(false);
     }
+  };
+  
+  // Make fetchAudiobooks globally available so other components can trigger it
+  useEffect(() => {
+    // Expose the refresh function to the window object
+    (window as any).__refreshAudiobooks = fetchAudiobooks;
     
+    // Initial fetch
     fetchAudiobooks();
+    
+    // Set up an event listener to reload when the page becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAudiobooks();
+      }
+    };
+
+    // Set up an event listener for the custom revalidate event
+    const handleRevalidate = () => {
+      fetchAudiobooks();
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('revalidate-audiobooks', handleRevalidate);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('revalidate-audiobooks', handleRevalidate);
+      // Clean up the global function
+      delete (window as any).__refreshAudiobooks;
+    };
   }, [currentPage]);
   
   function navigateToPage(page: number) {
