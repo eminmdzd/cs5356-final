@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import pdfParse from 'pdf-parse';
 import mp3Duration from 'mp3-duration';
+import { sendAudiobookCompletionEmail } from './email';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -346,6 +347,31 @@ export async function processAudiobookJob({
       audioPath,
       duration: durationInSeconds || null // Use null if we couldn't calculate duration
     }).where(eq(audiobooks.id, audiobookId));
+    
+    // Get audiobook details for email notification
+    const audiobook = await db.query.audiobooks.findFirst({
+      where: eq(audiobooks.id, audiobookId),
+      with: {
+        user: true
+      }
+    });
+    
+    // Send email notification
+    if (audiobook && audiobook.user && audiobook.user.email) {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        await sendAudiobookCompletionEmail({
+          to: audiobook.user.email,
+          audiobookTitle: audiobook.title,
+          audiobookId: audiobook.id,
+          appUrl
+        });
+        console.log(`Sent completion email to ${audiobook.user.email} for audiobook: ${audiobook.id}`);
+      } catch (emailError) {
+        console.error('Error sending audiobook completion email:', emailError);
+        // Continue even if email fails
+      }
+    }
     
     // Force revalidation of paths to ensure UI updates
     try {

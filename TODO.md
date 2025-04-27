@@ -4,7 +4,6 @@
 
 ***Todo***
 - somehow verify that created chunks are correct
-- send emails
 - Improve responsiveness on various screen sizes
 
 **_Issues_**
