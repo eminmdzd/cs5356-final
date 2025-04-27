@@ -132,7 +132,9 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
         >
           <Pencil className="h-4 w-4" />
         </Button>
-        {audiobook.processingStatus !== "completed" && (
+        {audiobook.processingStatus !== "completed" && 
+         audiobook.processingStatus !== "processing" && 
+         audiobook.processingStatus !== "pending" && (
           <form 
             action={async () => {
               const formData = new FormData();

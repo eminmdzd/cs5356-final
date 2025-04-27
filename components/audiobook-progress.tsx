@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 interface AudiobookProgressProps {
   audiobookId: string;
@@ -19,6 +20,7 @@ export function AudiobookProgress({
   const [status, setStatus] = useState<string>("");
   const [isCancelling, setIsCancelling] = useState(false);
   const [hasShownNotification, setHasShownNotification] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -133,8 +135,13 @@ export function AudiobookProgress({
     };
   }, [audiobookId, router, showCompleteMessage, status, hasShownNotification]);
 
-  // Function to handle cancellation
-  const handleCancel = useCallback(async () => {
+  // Function to handle cancel click
+  const handleCancelClick = useCallback(() => {
+    setShowCancelModal(true);
+  }, []);
+
+  // Function to handle cancel confirmation
+  const handleConfirmCancel = useCallback(async () => {
     try {
       setIsCancelling(true);
 
@@ -157,8 +164,17 @@ export function AudiobookProgress({
       console.error('Error cancelling audiobook:', error);
       toast.error(error.message || 'Failed to cancel audiobook');
       setIsCancelling(false);
+    } finally {
+      setShowCancelModal(false);
     }
   }, [audiobookId, router]);
+
+  // Function to handle cancel modal dismissal
+  const handleCancelModalClose = useCallback(() => {
+    if (!isCancelling) {
+      setShowCancelModal(false);
+    }
+  }, [isCancelling]);
 
   if (!audiobookId) return null;
 
@@ -166,6 +182,10 @@ export function AudiobookProgress({
   let statusLabel = "";
   // Treat 'success' as 'processing' for label purposes
   const normalizedStatus = status === "success" ? "processing" : status;
+  
+  // Debug log for status and showCancelButton
+  console.log(`AudiobookProgress: status=${status}, showCancelButton=${showCancelButton}, normalizedStatus=${normalizedStatus}`);
+  
   switch (normalizedStatus) {
     case "pending":
       statusLabel = "Pending";
@@ -190,28 +210,60 @@ export function AudiobookProgress({
   }
 
   return (
-    <div className="w-full space-y-2">
-      <div className="flex justify-between items-center">
-        <span className="text-sm font-medium">{statusLabel}</span>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{progress}%</span>
-          {showCancelButton && (status === "processing" || status === "pending") && (
-            <button
-              onClick={handleCancel}
-              disabled={isCancelling}
-              className="text-xs text-red-500 hover:text-red-700 font-medium"
-            >
-              {isCancelling ? "Cancelling..." : "Cancel"}
-            </button>
-          )}
+    <>
+      <div className="w-full space-y-2">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-medium">{statusLabel}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">{progress}%</span>
+            {showCancelButton && (normalizedStatus === "processing" || normalizedStatus === "pending") && (
+              <button
+                onClick={handleCancelClick}
+                disabled={isCancelling}
+                className="text-xs text-red-500 hover:text-red-700 font-medium"
+              >
+                {isCancelling ? "Cancelling..." : "Cancel"}
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="relative w-full h-2 bg-muted rounded-full overflow-hidden">
+          <div
+            className={`absolute top-0 left-0 h-full rounded-full transition-all duration-300 ${normalizedStatus === "failed" ? "bg-red-500" : "bg-primary"}`}
+            style={{ width: `${progress}%` }}
+          />
         </div>
       </div>
-      <div className="relative w-full h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`absolute top-0 left-0 h-full rounded-full transition-all duration-300 ${status === "failed" ? "bg-red-500" : "bg-primary"}`}
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-    </div>
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card p-6 rounded-lg max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Confirm Cancellation</h3>
+            <p className="mb-6">
+              Are you sure you want to cancel this audiobook generation? 
+              This will stop the process, remove any partially generated audio,
+              and cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleCancelModalClose}
+                disabled={isCancelling}
+              >
+                Keep Processing
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleConfirmCancel}
+                disabled={isCancelling}
+              >
+                {isCancelling ? "Cancelling..." : "Cancel Generation"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
