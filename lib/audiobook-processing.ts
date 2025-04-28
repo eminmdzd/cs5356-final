@@ -163,7 +163,7 @@ export async function processAudiobookJob({
 
     // 2. Split text into optimized chunks for production
     // Use larger chunks but stay under request limit
-    const maxChunkSize = isProduction ? 4700 : 5000; // Increased from 3000 to 4700 for production
+    const maxChunkSize = isProduction ? 3000 : 5000;
     console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
 
     // Update progress to 30% - Starting text chunking
