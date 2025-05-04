@@ -271,9 +271,12 @@ export async function processAudiobookJob({
     const AUDIO_GEN_END_PROGRESS = 90;
     const AUDIO_GEN_RANGE = AUDIO_GEN_END_PROGRESS - AUDIO_GEN_START_PROGRESS;
 
-    // Create a buffer array for new chunks to process
-    const audioBuffers: Buffer[] = [];
+    // Create a map of chunk index to buffer to maintain correct order
+    const audioBufferMap: Map<number, Buffer> = new Map();
     let existingAudioBuffer: Buffer | null = null;
+    
+    // Track the chunk indices that were processed in this run
+    const processedChunks: number[] = [];
     
     // Fetch existing audio if resuming
     if (existingAudioBlobUrl) {
@@ -327,7 +330,11 @@ export async function processAudiobookJob({
         const buffer = Buffer.isBuffer(response.audioContent)
           ? response.audioContent
           : Buffer.from(response.audioContent as string, 'base64');
-        audioBuffers.push(buffer);
+        
+        // Store in map with correct index to maintain order
+        audioBufferMap.set(i, buffer);
+        processedChunks.push(i);
+        
         consecutiveErrors = 0; // Reset error counter on success
       } catch (error) {
         console.error(`Error synthesizing chunk ${i}:`, error);
@@ -352,7 +359,11 @@ export async function processAudiobookJob({
             const buffer = Buffer.isBuffer(retryResponse.audioContent)
               ? retryResponse.audioContent
               : Buffer.from(retryResponse.audioContent as string, 'base64');
-            audioBuffers.push(buffer);
+            
+            // Store in map with correct index to maintain order
+            audioBufferMap.set(i, buffer);
+            processedChunks.push(i);
+            
             consecutiveErrors = 0; // Reset error counter on successful retry
           } catch (retryError) {
             console.error(`Retry failed for chunk ${i}:`, retryError);
@@ -385,14 +396,15 @@ export async function processAudiobookJob({
         console.log(`Timeout reached, saving progress at chunk ${batchStart}`);
         
         // Save progress to blob storage
-        if (isProduction && audioBuffers.length > 0) {
-          // Save our progress to blob storage
+        if (isProduction && audioBufferMap.size > 0) {
+          // Save our progress to blob storage - convert map to sorted buffer array
           await saveProgressAndScheduleResumption(
             audiobookId, 
             pdfPath, 
             batchStart, 
             chunks.length, 
-            audioBuffers, 
+            audioBufferMap,
+            processedChunks, 
             existingAudioBuffer
           );
           savedProgress = true;
@@ -416,14 +428,15 @@ export async function processAudiobookJob({
       } catch (error) {
         console.error(`Error processing batch starting at chunk ${batchStart}:`, error);
         
-        if (isProduction && audioBuffers.length > 0) {
-          // Save our progress to blob storage
+        if (isProduction && audioBufferMap.size > 0) {
+          // Save our progress to blob storage - convert map to sorted buffer array
           await saveProgressAndScheduleResumption(
             audiobookId, 
             pdfPath, 
             batchStart, 
             chunks.length, 
-            audioBuffers, 
+            audioBufferMap,
+            processedChunks, 
             existingAudioBuffer
           );
           savedProgress = true;
@@ -465,13 +478,25 @@ export async function processAudiobookJob({
       allAudioBuffers.push(existingAudioBuffer);
     }
     
-    // Filter out any undefined or null buffer entries before concatenation
-    const validNewBuffers = audioBuffers.filter(buffer => buffer !== undefined && buffer !== null);
-    if (validNewBuffers.length === 0 && !existingAudioBuffer) {
+    // Convert map to ordered array of buffers based on chunk indices
+    // Sort the processed chunks to ensure correct order
+    const sortedChunks = [...processedChunks].sort((a, b) => a - b);
+    console.log(`Concatenating chunks in order: ${sortedChunks.join(', ')}`);
+    
+    // Add buffers in sorted order
+    const orderedBuffers: Buffer[] = [];
+    for (const chunkIndex of sortedChunks) {
+      const buffer = audioBufferMap.get(chunkIndex);
+      if (buffer) {
+        orderedBuffers.push(buffer);
+      }
+    }
+    
+    if (orderedBuffers.length === 0 && !existingAudioBuffer) {
       throw new Error("No valid audio buffers were generated");
     }
     
-    allAudioBuffers = allAudioBuffers.concat(validNewBuffers);
+    allAudioBuffers = allAudioBuffers.concat(orderedBuffers);
     const concatenatedAudio = Buffer.concat(allAudioBuffers);
     const audioFileName = `${audiobookId}.mp3`;
     let audioPath = `/audio/${audioFileName}`;
@@ -633,7 +658,8 @@ async function saveProgressAndScheduleResumption(
   pdfPath: string,
   nextChunkIndex: number,
   totalChunks: number,
-  audioBuffers: Buffer[],
+  audioBufferMap: Map<number, Buffer>,
+  processedChunks: number[],
   existingAudioBuffer: Buffer | null
 ): Promise<void> {
   try {
@@ -653,9 +679,24 @@ async function saveProgressAndScheduleResumption(
       allAudioBuffers.push(existingAudioBuffer);
     }
     
-    // Add all valid new audio buffers
-    const validBuffers = audioBuffers.filter(b => b !== undefined && b !== null);
-    allAudioBuffers = allAudioBuffers.concat(validBuffers);
+    // Convert map to ordered array of buffers based on chunk indices
+    // Sort the processed chunks to ensure correct order
+    const sortedChunks = [...processedChunks].sort((a, b) => a - b);
+    
+    // Log the chunk order for debugging
+    console.log(`Processing chunks in order: ${sortedChunks.join(', ')}`);
+    
+    // Add buffers in sorted order
+    const newBuffers: Buffer[] = [];
+    for (const chunkIndex of sortedChunks) {
+      const buffer = audioBufferMap.get(chunkIndex);
+      if (buffer) {
+        newBuffers.push(buffer);
+      }
+    }
+    
+    // Combine with existing audio
+    allAudioBuffers = allAudioBuffers.concat(newBuffers);
     
     if (allAudioBuffers.length === 0) {
       throw new Error("No valid audio buffers to save");
