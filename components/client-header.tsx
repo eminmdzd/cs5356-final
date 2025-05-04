@@ -6,10 +6,21 @@ import { UserButton } from "@daveyplate/better-auth-ui"
 import { authClient } from "@/lib/auth-client"
 import { useState } from "react"
 import { Menu, X } from "lucide-react"
+import { usePathname } from "next/navigation"
 
 export function Header() {
   const { data: session, isPending } = authClient.useSession()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const pathname = usePathname()
+
+  const isActive = (path: string) => {
+    // Check if current path exactly matches or starts with the given path
+    // (but avoid matching root path with others)
+    if (path === "/") {
+      return pathname === "/"
+    }
+    return pathname === path || pathname.startsWith(`${path}/`)
+  }
 
   const toggleMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen)
@@ -27,17 +38,37 @@ export function Header() {
           {session?.user && !isPending && (
             <nav className="hidden md:flex items-center gap-2">
               <Link href="/dashboard">
-                <Button variant="ghost">Dashboard</Button>
+                <Button 
+                  variant={isActive("/dashboard") ? "default" : "ghost"}
+                  className={isActive("/dashboard") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}
+                >
+                  Dashboard
+                </Button>
               </Link>
               <Link href="/upload">
-                <Button variant="ghost">Upload PDF</Button>
+                <Button 
+                  variant={isActive("/upload") ? "default" : "ghost"}
+                  className={isActive("/upload") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}
+                >
+                  Upload PDF
+                </Button>
               </Link>
               <Link href="/audiobooks">
-                <Button variant="ghost">My Audiobooks</Button>
+                <Button 
+                  variant={isActive("/audiobooks") ? "default" : "ghost"} 
+                  className={isActive("/audiobooks") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}
+                >
+                  My Audiobooks
+                </Button>
               </Link>
               {session?.user?.role === "admin" && (
                 <Link href="/admin">
-                  <Button variant="ghost">Admin</Button>
+                  <Button 
+                    variant={isActive("/admin") ? "default" : "ghost"}
+                    className={isActive("/admin") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}
+                  >
+                    Admin
+                  </Button>
                 </Link>
               )}
             </nav>
@@ -105,27 +136,57 @@ export function Header() {
             {session?.user ? (
               <>
                 <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">Dashboard</Button>
+                  <Button 
+                    variant={isActive("/dashboard") ? "default" : "ghost"} 
+                    className={`w-full justify-start ${isActive("/dashboard") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}`}
+                  >
+                    Dashboard
+                  </Button>
                 </Link>
                 <Link href="/upload" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">Upload PDF</Button>
+                  <Button 
+                    variant={isActive("/upload") ? "default" : "ghost"} 
+                    className={`w-full justify-start ${isActive("/upload") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}`}
+                  >
+                    Upload PDF
+                  </Button>
                 </Link>
                 <Link href="/audiobooks" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">My Audiobooks</Button>
+                  <Button 
+                    variant={isActive("/audiobooks") ? "default" : "ghost"} 
+                    className={`w-full justify-start ${isActive("/audiobooks") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}`}
+                  >
+                    My Audiobooks
+                  </Button>
                 </Link>
                 {session?.user?.role === "admin" && (
                   <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="ghost" className="w-full justify-start">Admin</Button>
+                    <Button 
+                      variant={isActive("/admin") ? "default" : "ghost"} 
+                      className={`w-full justify-start ${isActive("/admin") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}`}
+                    >
+                      Admin
+                    </Button>
                   </Link>
                 )}
               </>
             ) : (
               <>
                 <Link href="/auth/sign-in" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">Sign In</Button>
+                  <Button 
+                    variant={isActive("/auth/sign-in") ? "default" : "ghost"} 
+                    className={`w-full justify-start ${isActive("/auth/sign-in") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}`}
+                  >
+                    Sign In
+                  </Button>
                 </Link>
                 <Link href="/auth/sign-up" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">Sign Up</Button>
+                  <Button 
+                    variant={isActive("/auth/sign-up") ? "default" : "ghost"} 
+                    className={`w-full justify-start ${isActive("/auth/sign-up") ? "bg-primary/10 text-primary hover:bg-primary/20" : ""}`}
+                  >
+                    Sign Up
+                  </Button>
                 </Link>
               </>
             )}

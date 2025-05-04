@@ -68,9 +68,8 @@ async function AudiobookContent({ id }: { id: string }) {
             ← Back to Audiobooks
           </Button>
         </Link>
-        <div className="flex items-center gap-2 mt-4">
-          <h1 className="text-3xl font-bold truncate">{audiobook.title}</h1>
-          <EditTitleButton id={id} currentTitle={audiobook.title} />
+        <div className="mt-4">
+          <EditTitleButton id={id} currentTitle={audiobook.title} inline={true} />
         </div>
       </div>
 

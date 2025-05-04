@@ -78,7 +78,22 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
       return
     }
 
+    if (!title.trim()) {
+      toast.error("Title cannot be empty")
+      return
+    }
+
+    // Store original title for potential rollback
+    const originalTitle = audiobook.title
+    
     try {
+      // Apply optimistic update first
+      window.dispatchEvent(new CustomEvent('optimistic-title-update', {
+        detail: { id: audiobook.id, title: title }
+      }));
+      
+      setIsEditing(false)
+      
       const formData = new FormData()
       formData.append("id", audiobook.id)
       formData.append("title", title)
@@ -86,8 +101,7 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
       const result = await updateAudiobookTitle(formData)
 
       if (result === "success") {
-        toast.success("Title updated successfully")
-        
+        // Skip toast notification for optimistic updates
         // Trigger revalidation of the audiobooks page
         if ((window as any).__refreshAudiobooks) {
           (window as any).__refreshAudiobooks();
@@ -97,16 +111,21 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
         }
       } else {
         toast.error(result)
-        // Reset to original title
-        setTitle(audiobook.title)
+        // Reset to original title and revert optimistic update
+        window.dispatchEvent(new CustomEvent('optimistic-title-update', {
+          detail: { id: audiobook.id, title: originalTitle }
+        }));
+        setTitle(originalTitle)
       }
     } catch (error) {
       console.error("Error updating title:", error)
       toast.error("Failed to update title")
-      // Reset to original title
-      setTitle(audiobook.title)
-    } finally {
-      setIsEditing(false)
+      // Reset to original title and revert optimistic update
+      window.dispatchEvent(new CustomEvent('optimistic-title-update', {
+        detail: { id: audiobook.id, title: originalTitle }
+      }));
+      setTitle(originalTitle)
+      setIsEditing(true)
     }
   }
 
@@ -118,10 +137,23 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
     setShowDeleteModal(false)
   }
 
+  // Function to be used by parent for optimistic UI
+  const handleOptimisticDelete = () => {
+    // This function would be called by the parent component to 
+    // immediately remove the card from the UI before the server responds
+    window.dispatchEvent(new CustomEvent('optimistic-delete', { 
+      detail: { id: audiobook.id }
+    }));
+  }
+
   const handleConfirmDelete = async () => {
     setIsDeleting(true)
 
     try {
+      // Apply optimistic UI update first
+      handleOptimisticDelete();
+      setShowDeleteModal(false);
+      
       const formData = new FormData()
       formData.append("id", audiobook.id)
 
@@ -129,7 +161,6 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
 
       if (result === "success") {
         toast.success("Audiobook deleted successfully")
-        setShowDeleteModal(false)
         
         // Trigger revalidation of the audiobooks page
         if ((window as any).__refreshAudiobooks) {
@@ -140,14 +171,14 @@ export function AudiobookCard({ audiobook }: { audiobook: Audiobook & { pdf: Pdf
         }
       } else {
         toast.error(result)
-        setIsDeleting(false)
-        setShowDeleteModal(false)
+        // Revert optimistic update by refreshing
+        router.refresh();
       }
     } catch (error) {
       console.error("Error deleting audiobook:", error)
       toast.error("Failed to delete audiobook")
-      setIsDeleting(false)
-      setShowDeleteModal(false)
+      // Revert optimistic update by refreshing
+      router.refresh();
     }
   }
 

@@ -28,6 +28,85 @@ export function AudiobooksContent() {
   
   const currentPage = parseInt(searchParams.get("page") || "1", 10)
   
+  // Function to handle optimistic refreshes
+  const refreshData = async () => {
+    try {
+      const response = await fetch(`/api/audiobooks?page=${currentPage}&limit=10`)
+      if (!response.ok) throw new Error("Failed to fetch audiobooks")
+      const newData = await response.json()
+      setData(newData)
+    } catch (error) {
+      console.error("Error refreshing audiobooks:", error)
+    }
+  }
+  
+  // Handle optimistic title updates
+  const handleOptimisticTitleUpdate = (event: CustomEvent) => {
+    if (!data) return
+    
+    const { id, title } = event.detail
+    
+    // Update the title in the local data
+    const updatedAudiobooks = data.audiobooks.map(book => 
+      book.id === id ? { ...book, title } : book
+    )
+    
+    setData({
+      ...data,
+      audiobooks: updatedAudiobooks
+    })
+  }
+  
+  // Handle optimistic deletion
+  const handleOptimisticDelete = (event: CustomEvent) => {
+    if (!data) return
+    
+    const { id } = event.detail
+    
+    // Filter out the deleted audiobook
+    const updatedAudiobooks = data.audiobooks.filter(book => book.id !== id)
+    
+    // Update pagination counts
+    const updatedPagination = {
+      ...data.pagination,
+      totalCount: data.pagination.totalCount - 1,
+      // Recalculate total pages
+      totalPages: Math.ceil((data.pagination.totalCount - 1) / data.pagination.limit),
+      // Update hasNextPage if needed
+      hasNextPage: currentPage < Math.ceil((data.pagination.totalCount - 1) / data.pagination.limit)
+    }
+    
+    setData({
+      audiobooks: updatedAudiobooks,
+      pagination: updatedPagination
+    })
+    
+    // If we've deleted all items on this page and it's not the first page, go to previous page
+    if (updatedAudiobooks.length === 0 && currentPage > 1) {
+      router.push(`/audiobooks?page=${currentPage - 1}`)
+    }
+  }
+  
+  // Set up event listeners for optimistic updates
+  useEffect(() => {
+    // Set up global custom refresh method
+    (window as any).__refreshAudiobooks = refreshData
+    
+    // Listen for optimistic update events
+    window.addEventListener('optimistic-title-update', handleOptimisticTitleUpdate as EventListener)
+    window.addEventListener('optimistic-delete', handleOptimisticDelete as EventListener)
+    window.addEventListener('revalidate-audiobooks', refreshData as EventListener)
+    
+    return () => {
+      // Clean up event listeners
+      delete (window as any).__refreshAudiobooks
+      window.removeEventListener('optimistic-title-update', handleOptimisticTitleUpdate as EventListener)
+      window.removeEventListener('optimistic-delete', handleOptimisticDelete as EventListener)
+      window.removeEventListener('revalidate-audiobooks', refreshData as EventListener)
+    }
+  }, [data, currentPage])
+  
+  // Fetch initial data
   useEffect(() => {
     async function fetchAudiobooks() {
       setLoading(true)

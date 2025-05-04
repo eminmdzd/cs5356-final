@@ -13,7 +13,7 @@
         "db:generate": "drizzle-kit generate",
         "auth:generate": "pnpm dlx @better-auth/cli@latest generate --output ./database/schema/auth.ts",
         "db:migrate": "drizzle-kit migrate",
-        "db:push": "drizzle-kit push:pg",
+        "db:push": "drizzle-kit push",
         "db:push-production": "NODE_ENV=production drizzle-kit push",
         "db:migrate-production": "NODE_ENV=production drizzle-kit migrate",
         "db:studio": "drizzle-kit studio",
