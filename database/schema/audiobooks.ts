@@ -26,6 +26,7 @@ export const audiobooks = pgTable("audiobooks", {
   duration: integer("duration"), // Duration in seconds
   audioPath: text("audio_path"),
   errorDetails: text("error_details"), // Store error details if processing fails
+  metadata: text("metadata"), // Store metadata like progress info, temporary URLs, etc.
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   processingStatus: text("processing_status").notNull().default("pending"), // pending, processing, completed, failed

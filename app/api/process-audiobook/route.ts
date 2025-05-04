@@ -4,10 +4,20 @@ import { db } from '@/database/db'
 import { audiobooks, pdfs } from '@/database/schema/audiobooks';
 import { eq } from 'drizzle-orm';
 
+// Set longer timeout and larger body limit for this API route
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb', // Increased limit for payload
+    },
+    responseLimit: false,
+  },
+};
+
 // POST /api/process-audiobook
 export async function POST(req: NextRequest) {
   try {
-    const { audiobookId } = await req.json();
+    const { audiobookId, resumeFrom, existingAudioUrl } = await req.json();
     if (!audiobookId) {
       return NextResponse.json({ error: 'audiobookId is required' }, { status: 400 });
     }
@@ -22,7 +32,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'PDF not found' }, { status: 404 });
     }
 
-    // Kick off processing (awaited, but the client can fire-and-forget this call)
+    // Check if this is a resumption request
+    if (resumeFrom !== undefined && resumeFrom > 0) {
+      console.log(`Resuming processing for audiobook ${audiobookId} from chunk ${resumeFrom} with existing audio URL: ${existingAudioUrl}`);
+      
+      // Get additional context from metadata if available
+      let metadata: any = {};
+      if (audiobook.metadata) {
+        try {
+          metadata = JSON.parse(audiobook.metadata);
+        } catch (e) {
+          console.warn(`Could not parse metadata for audiobook ${audiobookId}:`, e);
+        }
+      }
+      
+      // Verify the resumption is valid
+      if (!metadata.totalChunks || resumeFrom >= metadata.totalChunks) {
+        return NextResponse.json({ error: 'Invalid resumption point' }, { status: 400 });
+      }
+      
+      // Get the existing audio URL from metadata if not provided directly
+      const audioUrl = existingAudioUrl || (metadata.tempAudioUrl || null);
+      
+      // Kick off the resumed processing
+      await processAudiobookJob({
+        audiobookId: audiobook.id,
+        pdfPath: pdf.filePath,
+        startChunkIndex: resumeFrom,
+        existingAudioBlobUrl: audioUrl,
+      });
+      
+      return NextResponse.json({ success: true, resumed: true, fromChunk: resumeFrom });
+    }
+    
+    // This is a new processing request (not resuming)
     await processAudiobookJob({
       audiobookId: audiobook.id,
       pdfPath: pdf.filePath,

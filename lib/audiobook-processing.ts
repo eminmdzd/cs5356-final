@@ -121,75 +121,148 @@ function splitTextIntoChunks(text: string, maxBytes: number): string[] {
 export async function processAudiobookJob({
   audiobookId,
   pdfPath,
+  startChunkIndex = 0,
+  existingAudioBlobUrl = null,
+  timeoutMs = 50000, // Default timeout of 50 seconds to allow for saving progress
 }: {
   audiobookId: string;
   pdfPath: string;
+  startChunkIndex?: number;
+  existingAudioBlobUrl?: string | null;
+  timeoutMs?: number;
 }) {
+  // Track if we're in a timed-out state
+  let isTimedOut = false;
+  let timeoutId: NodeJS.Timeout | null = null;
+  
   try {
-    await db.update(audiobooks)
-      .set({ processingStatus: 'processing', progress: 5 })
-      .where(eq(audiobooks.id, audiobookId));
-
-    // 1. Extract PDF text
-    let dataBuffer: Buffer;
-    const isRemote = pdfPath.startsWith('http://') || pdfPath.startsWith('https://');
-    const isProd = process.env.NODE_ENV === 'production';
-
-    // Update progress to 10% - PDF fetching
-    await db.update(audiobooks).set({ progress: 10 }).where(eq(audiobooks.id, audiobookId));
-
-    if (isRemote && isProd) {
-      // Fetch from Vercel Blob Storage or remote URL
-      const response = await fetch(pdfPath);
-      if (!response.ok) throw new Error(`Failed to fetch remote PDF: ${response.statusText}`);
-      const arrayBuffer = await response.arrayBuffer();
-      dataBuffer = Buffer.from(arrayBuffer);
+    // Set timeout to stop processing before Vercel's 60s limit
+    if (isProduction) {
+      timeoutId = setTimeout(() => {
+        isTimedOut = true;
+        console.log(`Approaching timeout limit of ${timeoutMs}ms, preparing to save progress`);
+      }, timeoutMs);
+    }
+    
+    // Only update status to processing if this is the first run (startChunkIndex === 0)
+    if (startChunkIndex === 0) {
+      await db.update(audiobooks)
+        .set({ processingStatus: 'processing', progress: 5 })
+        .where(eq(audiobooks.id, audiobookId));
     } else {
-      // Local file system (dev)
-      const cleanPath = pdfPath.startsWith('/') ? pdfPath.slice(1) : pdfPath;
-      const absolutePath = path.join(process.cwd(), 'public', cleanPath);
-      dataBuffer = await fs.readFile(absolutePath);
+      console.log(`Resuming audiobook processing from chunk ${startChunkIndex}`);
     }
 
-    // Update progress to 15% - PDF retrieved
-    await db.update(audiobooks).set({ progress: 15 }).where(eq(audiobooks.id, audiobookId));
+    // 1. Extract PDF text (only on first run)
+    let dataBuffer: Buffer;
+    let text: string;
+    let chunks: string[];
+    
+    if (startChunkIndex === 0) {
+      const isRemote = pdfPath.startsWith('http://') || pdfPath.startsWith('https://');
+      const isProd = process.env.NODE_ENV === 'production';
 
-    // Update progress to 20% - Starting text extraction
-    await db.update(audiobooks).set({ progress: 20 }).where(eq(audiobooks.id, audiobookId));
-    const text = await extractTextWithPdfParse(dataBuffer);
+      // Update progress to 10% - PDF fetching
+      await db.update(audiobooks).set({ progress: 10 }).where(eq(audiobooks.id, audiobookId));
 
-    // Update progress to 25% - Text extraction complete
-    await db.update(audiobooks).set({ progress: 25 }).where(eq(audiobooks.id, audiobookId));
+      if (isRemote && isProd) {
+        // Fetch from Vercel Blob Storage or remote URL
+        const response = await fetch(pdfPath);
+        if (!response.ok) throw new Error(`Failed to fetch remote PDF: ${response.statusText}`);
+        const arrayBuffer = await response.arrayBuffer();
+        dataBuffer = Buffer.from(arrayBuffer);
+      } else {
+        // Local file system (dev)
+        const cleanPath = pdfPath.startsWith('/') ? pdfPath.slice(1) : pdfPath;
+        const absolutePath = path.join(process.cwd(), 'public', cleanPath);
+        dataBuffer = await fs.readFile(absolutePath);
+      }
 
-    // 2. Split text into optimized chunks for production
-    // Use larger chunks but stay under request limit
-    const maxChunkSize = isProduction ? 3000 : 5000;
-    console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
+      // Update progress to 15% - PDF retrieved
+      await db.update(audiobooks).set({ progress: 15 }).where(eq(audiobooks.id, audiobookId));
 
-    // Update progress to 30% - Starting text chunking
-    await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
+      // Update progress to 20% - Starting text extraction
+      await db.update(audiobooks).set({ progress: 20 }).where(eq(audiobooks.id, audiobookId));
+      text = await extractTextWithPdfParse(dataBuffer);
 
-    const chunks = splitTextIntoChunks(text, maxChunkSize);
-    console.log(`Created ${chunks.length} chunks for processing`);
+      // Update progress to 25% - Text extraction complete
+      await db.update(audiobooks).set({ progress: 25 }).where(eq(audiobooks.id, audiobookId));
 
-    // Update progress to 35% - Text chunking complete
-    await db.update(audiobooks).set({ progress: 35 }).where(eq(audiobooks.id, audiobookId));
+      // 2. Split text into optimized chunks for production
+      // Use larger chunks but stay under request limit
+      const maxChunkSize = isProduction ? 3000 : 5000;
+      console.log(`Splitting text into chunks with max size of ${maxChunkSize} bytes`);
+
+      // Update progress to 30% - Starting text chunking
+      await db.update(audiobooks).set({ progress: 30 }).where(eq(audiobooks.id, audiobookId));
+
+      chunks = splitTextIntoChunks(text, maxChunkSize);
+      
+      // Store chunks count in database for resumption
+      await db.update(audiobooks)
+        .set({ 
+          metadata: JSON.stringify({ 
+            totalChunks: chunks.length 
+          })
+        })
+        .where(eq(audiobooks.id, audiobookId));
+        
+      console.log(`Created ${chunks.length} chunks for processing`);
+
+      // Update progress to 35% - Text chunking complete
+      await db.update(audiobooks).set({ progress: 35 }).where(eq(audiobooks.id, audiobookId));
+    } else {
+      // Get existing chunks information for resuming
+      const audiobook = await db.query.audiobooks.findFirst({
+        where: eq(audiobooks.id, audiobookId)
+      });
+      
+      if (!audiobook || !audiobook.metadata) {
+        throw new Error("Cannot resume processing - missing metadata");
+      }
+      
+      const metadata = JSON.parse(audiobook.metadata);
+      if (!metadata.totalChunks) {
+        throw new Error("Cannot resume processing - missing chunks information");
+      }
+      
+      // Refetch PDF content for chunking
+      const isRemote = pdfPath.startsWith('http://') || pdfPath.startsWith('https://');
+      const isProd = process.env.NODE_ENV === 'production';
+
+      if (isRemote && isProd) {
+        const response = await fetch(pdfPath);
+        if (!response.ok) throw new Error(`Failed to fetch remote PDF: ${response.statusText}`);
+        const arrayBuffer = await response.arrayBuffer();
+        dataBuffer = Buffer.from(arrayBuffer);
+      } else {
+        const cleanPath = pdfPath.startsWith('/') ? pdfPath.slice(1) : pdfPath;
+        const absolutePath = path.join(process.cwd(), 'public', cleanPath);
+        dataBuffer = await fs.readFile(absolutePath);
+      }
+      
+      text = await extractTextWithPdfParse(dataBuffer);
+      const maxChunkSize = isProduction ? 3000 : 5000; 
+      chunks = splitTextIntoChunks(text, maxChunkSize);
+      
+      console.log(`Resumed processing with ${chunks.length} total chunks, starting from chunk ${startChunkIndex}`);
+    }
 
     // 3. Generate audio for each chunk with optimized concurrency
-    const audioBuffers: Buffer[] = new Array(chunks.length);
-    // Use adaptive concurrency based on document size
     const docSizeInMB = dataBuffer.length / (1024 * 1024);
     // Adjust concurrency based on document size to prevent API rate limits
-    // Small docs: higher concurrency, large docs: lower concurrency
-    const baseConcurrency = isProduction ? 4 : 5; // Increased from 3 to 4 for production
+    const baseConcurrency = isProduction ? 3 : 5; // Reduced from 4 to 3 for production to avoid rate limits
     const concurrency = docSizeInMB > 5 ? Math.max(2, Math.floor(baseConcurrency / 2)) : baseConcurrency;
 
     console.log(`Using concurrency of ${concurrency} for TTS API calls (document size: ${docSizeInMB.toFixed(2)}MB)`);
 
-    // Update progress to 40% - Starting audio generation
-    await db.update(audiobooks).set({ progress: 40 }).where(eq(audiobooks.id, audiobookId));
+    // Update progress appropriately
+    let currentProgress = startChunkIndex === 0 ? 40 : 
+      40 + Math.floor((startChunkIndex / chunks.length) * 50); // 40-90% range for audio generation
+    
+    await db.update(audiobooks).set({ progress: currentProgress }).where(eq(audiobooks.id, audiobookId));
 
-    let completed = 0;
+    let completed = startChunkIndex;
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 3;
 
@@ -198,7 +271,33 @@ export async function processAudiobookJob({
     const AUDIO_GEN_END_PROGRESS = 90;
     const AUDIO_GEN_RANGE = AUDIO_GEN_END_PROGRESS - AUDIO_GEN_START_PROGRESS;
 
+    // Create a buffer array for new chunks to process
+    const audioBuffers: Buffer[] = [];
+    let existingAudioBuffer: Buffer | null = null;
+    
+    // Fetch existing audio if resuming
+    if (existingAudioBlobUrl) {
+      try {
+        console.log(`Fetching existing audio from ${existingAudioBlobUrl}`);
+        const response = await fetch(existingAudioBlobUrl);
+        if (!response.ok) throw new Error(`Failed to fetch existing audio: ${response.statusText}`);
+        const arrayBuffer = await response.arrayBuffer();
+        existingAudioBuffer = Buffer.from(arrayBuffer);
+        console.log(`Successfully retrieved existing audio (${existingAudioBuffer.length} bytes)`);
+      } catch (error) {
+        console.error("Failed to retrieve existing audio:", error);
+        // Continue without existing audio - will start from scratch
+        existingAudioBuffer = null;
+      }
+    }
+
     async function synthesizeChunk(i: number) {
+      // Check if we're timed out before processing each chunk
+      if (isTimedOut) {
+        console.log(`Timeout reached, skipping chunk ${i}`);
+        return;
+      }
+      
       const startTime = Date.now();
       console.log(`Starting synthesis for chunk ${i}/${chunks.length} at ${new Date().toISOString()}`);
 
@@ -228,7 +327,7 @@ export async function processAudiobookJob({
         const buffer = Buffer.isBuffer(response.audioContent)
           ? response.audioContent
           : Buffer.from(response.audioContent as string, 'base64');
-        audioBuffers[i] = buffer;
+        audioBuffers.push(buffer);
         consecutiveErrors = 0; // Reset error counter on success
       } catch (error) {
         console.error(`Error synthesizing chunk ${i}:`, error);
@@ -253,7 +352,7 @@ export async function processAudiobookJob({
             const buffer = Buffer.isBuffer(retryResponse.audioContent)
               ? retryResponse.audioContent
               : Buffer.from(retryResponse.audioContent as string, 'base64');
-            audioBuffers[i] = buffer;
+            audioBuffers.push(buffer);
             consecutiveErrors = 0; // Reset error counter on successful retry
           } catch (retryError) {
             console.error(`Retry failed for chunk ${i}:`, retryError);
@@ -269,29 +368,111 @@ export async function processAudiobookJob({
       const progress = AUDIO_GEN_START_PROGRESS + Math.floor((completed / chunks.length) * AUDIO_GEN_RANGE);
       await db.update(audiobooks).set({ progress }).where(eq(audiobooks.id, audiobookId));
       console.log(`Updated progress to ${progress}% after completing chunk ${i}/${chunks.length}`);
+      
+      // Check if we've reached timeout after each chunk
+      if (isTimedOut) {
+        console.log(`Timeout reached after processing chunk ${i}`);
+        return;
+      }
     }
 
     // Process chunks in batches with adaptive delay to prevent rate limiting
-    for (let batchStart = 0; batchStart < chunks.length; batchStart += concurrency) {
+    let savedProgress = false;
+    
+    for (let batchStart = startChunkIndex; batchStart < chunks.length; batchStart += concurrency) {
+      // Check if we've timed out before processing each batch
+      if (isTimedOut) {
+        console.log(`Timeout reached, saving progress at chunk ${batchStart}`);
+        
+        // Save progress to blob storage
+        if (isProduction && audioBuffers.length > 0) {
+          // Save our progress to blob storage
+          await saveProgressAndScheduleResumption(
+            audiobookId, 
+            pdfPath, 
+            batchStart, 
+            chunks.length, 
+            audioBuffers, 
+            existingAudioBuffer
+          );
+          savedProgress = true;
+        }
+        break;
+      }
+      
       const batch = [];
       for (let j = 0; j < concurrency && batchStart + j < chunks.length; j++) {
         batch.push(synthesizeChunk(batchStart + j));
       }
 
-      await Promise.all(batch);
+      try {
+        await Promise.all(batch);
 
-      // Add small delay between batches in production to avoid rate limiting
-      if (isProduction && batchStart + concurrency < chunks.length) {
-        const delay = 500; // 500ms delay between batches
-        await new Promise(resolve => setTimeout(resolve, delay));
+        // Add small delay between batches in production to avoid rate limiting
+        if (isProduction && batchStart + concurrency < chunks.length && !isTimedOut) {
+          const delay = 500; // 500ms delay between batches
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      } catch (error) {
+        console.error(`Error processing batch starting at chunk ${batchStart}:`, error);
+        
+        if (isProduction && audioBuffers.length > 0) {
+          // Save our progress to blob storage
+          await saveProgressAndScheduleResumption(
+            audiobookId, 
+            pdfPath, 
+            batchStart, 
+            chunks.length, 
+            audioBuffers, 
+            existingAudioBuffer
+          );
+          savedProgress = true;
+        }
+        
+        throw error;
       }
+    }
+    
+    // Clear timeout if we've made it this far
+    if (timeoutId) clearTimeout(timeoutId);
+    
+    // If we timed out and saved progress, return early
+    if (isTimedOut && savedProgress) {
+      await db.update(audiobooks)
+        .set({ 
+          processingStatus: 'processing',
+          progress: Math.min(85, 40 + Math.floor((completed / chunks.length) * 50)),
+          metadata: JSON.stringify({
+            totalChunks: chunks.length,
+            processedChunks: completed,
+            resumeScheduled: true
+          })
+        })
+        .where(eq(audiobooks.id, audiobookId));
+      
+      return; // Exit early, the resumption is scheduled
     }
 
     // 4. Concatenate audio and save to appropriate storage
     // Update progress to 90% - Starting audio file preparation
     await db.update(audiobooks).set({ progress: 90 }).where(eq(audiobooks.id, audiobookId));
 
-    const concatenatedAudio = Buffer.concat(audioBuffers);
+    // Combine existing audio from previous runs with newly generated audio
+    let allAudioBuffers: Buffer[] = [];
+    
+    if (existingAudioBuffer) {
+      console.log(`Adding existing audio buffer (${existingAudioBuffer.length} bytes) to newly generated audio`);
+      allAudioBuffers.push(existingAudioBuffer);
+    }
+    
+    // Filter out any undefined or null buffer entries before concatenation
+    const validNewBuffers = audioBuffers.filter(buffer => buffer !== undefined && buffer !== null);
+    if (validNewBuffers.length === 0 && !existingAudioBuffer) {
+      throw new Error("No valid audio buffers were generated");
+    }
+    
+    allAudioBuffers = allAudioBuffers.concat(validNewBuffers);
+    const concatenatedAudio = Buffer.concat(allAudioBuffers);
     const audioFileName = `${audiobookId}.mp3`;
     let audioPath = `/audio/${audioFileName}`;
     let audioDuration = 0;
@@ -432,7 +613,116 @@ export async function processAudiobookJob({
       // Continue even if revalidation fails
     }
   } catch (error: any) {
-    await db.update(audiobooks).set({ processingStatus: 'failed', errorDetails: error.message }).where(eq(audiobooks.id, audiobookId));
+    // Only mark as failed if we didn't save progress for resumption
+    if (!isTimedOut) {
+      await db.update(audiobooks).set({ processingStatus: 'failed', errorDetails: error.message }).where(eq(audiobooks.id, audiobookId));
+    }
+    throw error;
+  } finally {
+    // Clear the timeout if it's still active
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Saves the audio processing progress to Vercel Blob Storage and schedules a resumption 
+ * of the processing via a new API call.
+ */
+async function saveProgressAndScheduleResumption(
+  audiobookId: string,
+  pdfPath: string,
+  nextChunkIndex: number,
+  totalChunks: number,
+  audioBuffers: Buffer[],
+  existingAudioBuffer: Buffer | null
+): Promise<void> {
+  try {
+    console.log(`Saving progress for audiobook ${audiobookId}, next chunk: ${nextChunkIndex}/${totalChunks}`);
+    
+    // Dynamic import of Vercel Blob
+    const { put } = await import('@vercel/blob');
+    
+    // Check if we have the necessary token
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      throw new Error("Missing BLOB_READ_WRITE_TOKEN in production environment");
+    }
+    
+    // Combine existing audio with new audio buffers
+    let allAudioBuffers: Buffer[] = [];
+    if (existingAudioBuffer) {
+      allAudioBuffers.push(existingAudioBuffer);
+    }
+    
+    // Add all valid new audio buffers
+    const validBuffers = audioBuffers.filter(b => b !== undefined && b !== null);
+    allAudioBuffers = allAudioBuffers.concat(validBuffers);
+    
+    if (allAudioBuffers.length === 0) {
+      throw new Error("No valid audio buffers to save");
+    }
+    
+    // Concatenate all audio buffers
+    const concatenatedAudio = Buffer.concat(allAudioBuffers);
+    
+    // Create a unique temporary filename to avoid collisions
+    const tempFileName = `${audiobookId}_temp_${Date.now()}.mp3`;
+    
+    // Create a File object from the buffer
+    const file = new File([concatenatedAudio], tempFileName, { type: 'audio/mpeg' });
+    
+    // Upload to Vercel Blob Storage
+    const blob = await put(tempFileName, file, {
+      access: 'public',
+    });
+    
+    console.log(`Temporary audio saved to Blob Storage: ${blob.url}`);
+    
+    // Update the audiobook record with temporary blob URL and progress information
+    await db.update(audiobooks)
+      .set({ 
+        metadata: JSON.stringify({
+          totalChunks,
+          nextChunkIndex,
+          tempAudioUrl: blob.url,
+          resumptionTimestamp: Date.now()
+        })
+      })
+      .where(eq(audiobooks.id, audiobookId));
+    
+    // Schedule the resumption by making a new API call
+    // This needs to be a non-blocking fire-and-forget operation
+    setTimeout(async () => {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const resumeUrl = `${appUrl}/api/process-audiobook`;
+        
+        console.log(`Scheduling resumption of audiobook processing: ${resumeUrl}`);
+        
+        // Make the API call to continue processing
+        const response = await fetch(resumeUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            audiobookId,
+            resumeFrom: nextChunkIndex,
+            existingAudioUrl: blob.url
+          }),
+        });
+        
+        if (!response.ok) {
+          console.error(`Failed to schedule resumption: ${response.statusText}`);
+        } else {
+          console.log(`Successfully scheduled resumption of audiobook processing`);
+        }
+      } catch (error) {
+        console.error("Error scheduling processing resumption:", error);
+      }
+    }, 1000); // 1 second delay before scheduling
+    
+  } catch (error) {
+    console.error("Error saving progress:", error);
     throw error;
   }
 }
