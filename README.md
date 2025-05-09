@@ -1,5 +1,5 @@
 # Audiobook Generator App. [NOT UPDATED]
-
+# WE ALSO MAY EXPERIENCE ISSUES DUE TO FREE VERCEL TIER LIMITS PLEASE LET US KNOW (STORAGE, GOOGLE CREDITS, etc.)
 This application allows users to generate audiobooks from PDF files using Google's Text-to-Speech Long Audio API.
 
 ## Features
